@@ -1,23 +1,18 @@
 #!/bin/bash
-# Abort on any error, undefined variable, or pipeline failure
+# Abort immediately on errors, unset variables, or pipeline failures
 set -euo pipefail
 
 # Debugging toggle
 _DEBUG="on"
 
-# Setup base variables
+# Setup base paths
 LIB_PATH="/usr/share"
 PVEMANAGER_FILEPATH="${LIB_PATH}/pve-manager/js/pvemanagerlib.js"
 ZFSPLUGIN_FILEPATH="${LIB_PATH}/perl5/PVE/Storage/ZFSPlugin.pm"
 APIDOC_FILEPATH="${LIB_PATH}/pve-docs/api-viewer/apidoc.js"
-FREENAS_FILEPATH="${LIB_PATH}/perl5/PVE/Storage/LunCmd/TrueNAS.pm"
-GIT_LOCAL_REPO_PATH="/usr/local/src/"
-GIT_REPO_NAME="truenas-proxmox"
+TRUENAS_FILEPATH="${LIB_PATH}/perl5/PVE/Storage/LunCmd/TrueNAS.pm"
 
-# Patch args depending on debug
-PATCH_ARGS="${_DEBUG:-off}" == "on" && echo "--verbose -b --ignore-whitespace" || echo "-s -b --ignore-whitespace"
-
-# Utility: Restore a backup if it exists
+# Utility: Restore backup if it exists
 restore_backup() {
     local orig_file="$1.orig"
     local target_file="$1"
@@ -29,37 +24,30 @@ restore_backup() {
     fi
 }
 
-# Main logic
-echo "Initiating '$1' with arg '${2:-}'"
+echo "Initiating 'prerm' for TrueNAS-Proxmox package with argument '$1'"
 
 case "$1" in
-  remove|upgrade)
-    # Clean up cloned repo
-    if [ -d "${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME}" ]; then
-        echo "Removing local git repo '${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME}'"
-        rm -rf "${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME}"
-    fi
+  remove|upgrade|deconfigure)
+    echo "Preparing system for removal or upgrade of truenas-proxmox package..."
 
-    # Remove TrueNAS.pm if present
-    if [ -f "${FREENAS_FILEPATH}" ]; then
-        echo "Removing TrueNAS.pm LUN plugin '${FREENAS_FILEPATH}'"
-        rm -f "${FREENAS_FILEPATH}"
-    fi
-
-    echo "Reinstalling original Proxmox VE files..."
-
-    # Restore backups carefully
+    # Restore original Proxmox files if backups exist
     restore_backup "${ZFSPLUGIN_FILEPATH}"
     restore_backup "${PVEMANAGER_FILEPATH}"
     restore_backup "${APIDOC_FILEPATH}"
 
-    echo "Restarting Proxmox services..."
-    systemctl restart pvedaemon pveproxy pvestatd pvescheduler
+    # Remove TrueNAS LUN plugin file if it exists
+    if [ -f "${TRUENAS_FILEPATH}" ]; then
+        echo "Removing TrueNAS.pm plugin '${TRUENAS_FILEPATH}'"
+        rm -f "${TRUENAS_FILEPATH}"
+    fi
 
+    # Restart Proxmox services gracefully
+    echo "Restarting Proxmox services to apply clean state..."
+    systemctl restart pvedaemon pveproxy pvestatd pvescheduler
     ;;
 
-  purge|failed-upgrade|disappear|abort-upgrade|abort-remove|abort-deconfigure)
-    # No specific action needed
+  abort-upgrade|abort-remove|abort-deconfigure)
+    echo "Abort action detected. No changes made."
     ;;
 
   *)
