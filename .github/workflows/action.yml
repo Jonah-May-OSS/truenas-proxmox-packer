@@ -7,124 +7,83 @@ on:
 env:
   DEB_PACKAGE_NAME: 'truenas-proxmox'
   DEB_DISTRO_VERSION: 'any-version'
-  PLUGIN_SOURCE_REPO: 'https://github.com/Jonah-May-OSS/truenas-proxmox.git'
+  PACKER_REPO: 'Jonah-May-OSS/truenas-proxmox-packer'
+  PLUGIN_SOURCE_REPO: 'Jonah-May-OSS/truenas-proxmox'
 
 jobs:
   build_package:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout build repository
+      # Checkout the official packer repository
+      - name: Checkout packer repository
         uses: actions/checkout@v4
+        with:
+          repository: ${{ env.PACKER_REPO }}
+          path: packer
 
+      # Determine branch and set versioning
       - name: Set environment variables
         shell: bash
         run: |
           REF="${{ github.event.client_payload.ref }}"
           echo "GitHub ref is: $REF"
 
-          if [[ "$REF" == *"feature_"* ]] || [[ "$REF" == *"ng"* ]]; then
-            echo "DEB_PACKAGE_VERSION=3.0.0-alpha1" >> $GITHUB_ENV
-            echo "buildFolder=development"       >> $GITHUB_ENV
-            echo "ARTIFACT_REPO_NAME=truenas-proxmox-snapshots" >> $GITHUB_ENV
-
-          elif [[ "$REF" == *"master"* ]]; then
-            echo "DEB_PACKAGE_VERSION=3.0.0-beta1" >> $GITHUB_ENV
-            echo "buildFolder=testing"           >> $GITHUB_ENV
-            echo "ARTIFACT_REPO_NAME=truenas-proxmox-testing" >> $GITHUB_ENV
-
-          elif [[ "$REF" == *"3.0"* ]]; then
-            echo "DEB_PACKAGE_VERSION=3.0.0"      >> $GITHUB_ENV
-            echo "buildFolder=3.0"               >> $GITHUB_ENV
-            echo "ARTIFACT_REPO_NAME=truenas-proxmox" >> $GITHUB_ENV
-
+          if [[ "$REF" == feature_* ]] || [[ "$REF" == ng ]]; then
+            FOLDER="development"
+            VERSION="3.0.0-alpha1"
+            REPO_NAME="truenas-proxmox-snapshots"
+          elif [[ "$REF" == master ]]; then
+            FOLDER="testing"
+            VERSION="3.0.0-beta1"
+            REPO_NAME="truenas-proxmox-testing"
+          elif [[ "$REF" =~ ^(v?3\.0|3\.0.*)$ ]]; then
+            FOLDER="stable"
+            VERSION="3.0.0"
+            REPO_NAME="truenas-proxmox"
           else
-            echo "ERROR: Unknown branch ref \"$REF\"" >&2
+            echo "ERROR: Unknown branch ref '$REF'" >&2
             exit 1
           fi
+          echo "buildFolder=$FOLDER" >> $GITHUB_ENV
+          echo "DEB_PACKAGE_VERSION=$VERSION" >> $GITHUB_ENV
+          echo "ARTIFACT_REPO_NAME=$REPO_NAME" >> $GITHUB_ENV
 
-      - name: Clone plugin source repository
-        shell: bash
-        run: |
-          git clone "${{ env.PLUGIN_SOURCE_REPO }}" plugin-source
+      # Checkout the plugin source repository
+      - name: Checkout plugin source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.PLUGIN_SOURCE_REPO }}
+          path: plugin-source
 
-      - name: Verify plugin-source clone succeeded
-        shell: bash
-        run: |
-          if [ ! -d plugin-source/pve-manager ] || [ ! -d plugin-source/perl5 ] || [ ! -d plugin-source/pve-docs ]; then
-            echo "ERROR: Missing expected directories in plugin-source!" >&2
-            exit 1
-          fi
-          echo "plugin-source repo looks correct."
-
-      - name: Prepare filesystem layout
+      # Populate packer directory with plugin files
+      - name: Prepare packer directory
         shell: bash
         run: |
           set -euo pipefail
+          rsync -a plugin-source/ packer/${{ env.buildFolder }}/
 
-          # Create directory structure
-          mkdir -p "${{ env.buildFolder }}/usr/share/pve-manager/js"
-          mkdir -p "${{ env.buildFolder }}/usr/share/pve-docs/api-viewer"
-          mkdir -p "${{ env.buildFolder }}/usr/share/perl5/PVE/Storage"
-          mkdir -p "${{ env.buildFolder }}/usr/share/perl5/PVE/Storage/LunCmd"
-          mkdir -p "${{ env.buildFolder }}/usr/share/perl5/REST"
-
-          # Copy JavaScript assets directly from repo
-          cp plugin-source/pve-manager/js/pvemanagerlib.js \
-            "${{ env.buildFolder }}/usr/share/pve-manager/js/"
-          cp plugin-source/pve-docs/api-viewer/apidoc.js \
-            "${{ env.buildFolder }}/usr/share/pve-docs/api-viewer/"
-
-          # Copy Perl modules
-          cp plugin-source/perl5/PVE/Storage/ZFSPlugin.pm \
-            "${{ env.buildFolder }}/usr/share/perl5/PVE/Storage/"
-          cp plugin-source/perl5/PVE/Storage/LunCmd/TrueNAS.pm \
-            "${{ env.buildFolder }}/usr/share/perl5/PVE/Storage/LunCmd/"
-          cp plugin-source/perl5/REST/Client.pm \
-            "${{ env.buildFolder }}/usr/share/perl5/REST/"
-
-      - name: Fix permissions on Debian control scripts
+      # Fix permissions on DEBIAN metadata and scripts
+      - name: Fix permissions
         shell: bash
         run: |
-          set -euo pipefail
-          chmod +x "${{ env.buildFolder }}/DEBIAN/postinst" || true
-          chmod +x "${{ env.buildFolder }}/DEBIAN/postrm"   || true
-          chmod +x "${{ env.buildFolder }}/DEBIAN/prerm"    || true
-          chmod +x "${{ env.buildFolder }}/DEBIAN/preinst"  || true
+          chmod -R 0755 packer/${{ env.buildFolder }}/DEBIAN
 
-      - name: Verify critical plugin files exist before build
-        shell: bash
-        run: |
-          set -euo pipefail
-          REQUIRED_FILES=(
-            "${{ env.buildFolder }}/usr/share/pve-manager/js/pvemanagerlib.js"
-            "${{ env.buildFolder }}/usr/share/pve-docs/api-viewer/apidoc.js"
-            "${{ env.buildFolder }}/usr/share/perl5/PVE/Storage/ZFSPlugin.pm"
-            "${{ env.buildFolder }}/usr/share/perl5/PVE/Storage/LunCmd/TrueNAS.pm"
-            "${{ env.buildFolder }}/usr/share/perl5/REST/Client.pm"
-          )
-
-          for file in "${REQUIRED_FILES[@]}"; do
-            if [ ! -f "$file" ]; then
-              echo "ERROR: Critical file missing: $file" >&2
-              exit 1
-            fi
-          done
-          echo "All critical plugin files are present."
-
+      # Build the .deb package
       - name: Build Debian package
         shell: bash
         run: |
-          sudo dpkg-deb -Zgzip --build "${{ env.buildFolder }}" \
-            "${{ env.DEB_PACKAGE_NAME }}_${{ env.DEB_PACKAGE_VERSION }}_all.deb"
+          dpkg-deb -Zgzip --build packer/${{ env.buildFolder }} \
+            ${DEB_PACKAGE_NAME}_${DEB_PACKAGE_VERSION}_all.deb
 
-      - name: Push Debian package to Cloudsmith
+      # Publish the package to Cloudsmith
+      - name: Push to Cloudsmith
         uses: cloudsmith-io/action@master
         with:
           api-key: ${{ secrets.CLOUDSMITH_API_KEY }}
           command: push
           format: deb
-          owner: jonah-may-oss
+          owner: ksatechnologies
           repo: ${{ env.ARTIFACT_REPO_NAME }}
           distro: debian
           release: ${{ env.DEB_DISTRO_VERSION }}
-          file: ${{ env.DEB_PACKAGE_NAME }}_${{ env.DEB_PACKAGE_VERSION }}_all.deb
+          file: ${DEB_PACKAGE_NAME}_${DEB_PACKAGE_VERSION}_all.deb
