@@ -4,10 +4,10 @@ on:
   repository_dispatch:
     types: [build_push]
 env:
-  DEB_PACKAGE_NAME: 'freenas-proxmox'
+  DEB_PACKAGE_NAME: 'truenas-proxmox'
   DEB_DISTRO_VERSION: 'any-version'
 jobs:
-  Build_freenas-proxmox_Debian_package:
+  Build_truenas-proxmox_Debian_package:
     runs-on: ubuntu-latest
     steps:
       # Set variables for a `feature` branch push or merge
@@ -45,8 +45,8 @@ jobs:
       # Need `dpkg` installed to build the deb package.
       - name: Make sure dpkg is installed.
         run: sudo apt-get install dpkg
-      # Get the `freenas-proxmox-package` repo
-      - name: Checkout freenas-proxmox-packer.
+      # Get the `truenas-proxmox-package` repo
+      - name: Checkout truenas-proxmox-packer.
         uses: actions/checkout@v4
       # Set the correct file permissions for proper package execution.
       - name: Change permissions on the `post` files.
