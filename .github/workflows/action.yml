@@ -14,19 +14,17 @@ jobs:
   build_package:
     runs-on: ubuntu-latest
     steps:
-      # Checkout the official packer repository
       - name: Checkout packer repository
         uses: actions/checkout@v4
         with:
           repository: ${{ env.PACKER_REPO }}
           path: packer
 
-      # Determine branch and set versioning
       - name: Set environment variables
         shell: bash
         run: |
           REF="${{ github.event.client_payload.ref }}"
-          # Strip refs/heads/ to get branch name
+          # Strip refs/heads/ prefix
           BRANCH="${REF#refs/heads/}"
           echo "GitHub branch is: $BRANCH"
 
@@ -50,34 +48,39 @@ jobs:
           echo "DEB_PACKAGE_VERSION=$VERSION" >> $GITHUB_ENV
           echo "ARTIFACT_REPO_NAME=$REPO_NAME" >> $GITHUB_ENV
 
-      # Checkout the plugin source repository
       - name: Checkout plugin source
         uses: actions/checkout@v4
         with:
           repository: ${{ env.PLUGIN_SOURCE_REPO }}
           path: plugin-source
 
-      # Populate packer directory with plugin files
       - name: Prepare packer directory
         shell: bash
         run: |
           set -euo pipefail
           rsync -a plugin-source/ packer/${{ env.buildFolder }}/
 
-      # Fix permissions on DEBIAN metadata and scripts
-      - name: Fix permissions
+      - name: Fix permissions on DEBIAN metadata and scripts
         shell: bash
         run: |
           chmod -R 0755 packer/${{ env.buildFolder }}/DEBIAN
 
-      # Build the .deb package
+      - name: Update DEBIAN/control Version
+        shell: bash
+        run: |
+          CONTROL_FILE="packer/${{ env.buildFolder }}/DEBIAN/control"
+          if [ ! -f "$CONTROL_FILE" ]; then
+            echo "ERROR: control file not found at $CONTROL_FILE" >&2
+            exit 1
+          fi
+          sed -i "s/^Version:.*/Version: ${{ env.DEB_PACKAGE_VERSION }}/" "$CONTROL_FILE"
+
       - name: Build Debian package
         shell: bash
         run: |
           dpkg-deb -Zgzip --build packer/${{ env.buildFolder }} \
             ${DEB_PACKAGE_NAME}_${DEB_PACKAGE_VERSION}_all.deb
 
-      # Publish the package to Cloudsmith
       - name: Push to Cloudsmith
         uses: cloudsmith-io/action@master
         with:
