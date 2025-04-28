@@ -1,104 +1,71 @@
 #!/bin/bash
-# Abort if any command returns an error value
-set -e
+# Abort on any error, undefined variable, or pipeline failure
+set -euo pipefail
 
-# Debug variable - Values "on" or "off"
+# Debugging toggle
 _DEBUG="on"
 
-# Setup some variables so we are not duping the paths
+# Setup base variables
 LIB_PATH="/usr/share"
-PVEMANAGER_FILEPATH="/pve-manager/js/pvemanagerlib.js"
-ZFSPLUGIN_FILEPATH="/perl5/PVE/Storage/ZFSPlugin.pm"
-APIDOC_FILEPATH="/pve-docs/api-viewer/apidoc.js"
-FREENAS_FILEPATH="/perl5/PVE/Storage/LunCmd/TrueNAS.pm"
+PVEMANAGER_FILEPATH="${LIB_PATH}/pve-manager/js/pvemanagerlib.js"
+ZFSPLUGIN_FILEPATH="${LIB_PATH}/perl5/PVE/Storage/ZFSPlugin.pm"
+APIDOC_FILEPATH="${LIB_PATH}/pve-docs/api-viewer/apidoc.js"
+FREENAS_FILEPATH="${LIB_PATH}/perl5/PVE/Storage/LunCmd/TrueNAS.pm"
 GIT_LOCAL_REPO_PATH="/usr/local/src/"
 GIT_REPO_NAME="truenas-proxmox"
-GIT_BRANCH="master"
-RESTART_PVE_SERVICES="no"
 
-# This script is called as the last step of the installation of the
-# package.  All the package's files are in place, dpkg has already
-# done its automatic conffile handling, and all the packages we depend
-# of are already fully installed and configured.
+# Patch args depending on debug
+PATCH_ARGS="${_DEBUG:-off}" == "on" && echo "--verbose -b --ignore-whitespace" || echo "-s -b --ignore-whitespace"
 
-[ "$_DEBUG" == "on" ] && PATCH_ARGS="--verbose -b --ignore-whitespace" || PATCH_ARGS="-s -b --ignore-whitespace"
+# Utility: Restore a backup if it exists
+restore_backup() {
+    local orig_file="$1.orig"
+    local target_file="$1"
+    if [ -f "$orig_file" ]; then
+        echo "Restoring original file $target_file from $orig_file"
+        cp "$orig_file" "$target_file"
+    else
+        echo "WARNING: Backup file $orig_file not found. Skipping restore for $target_file"
+    fi
+}
 
-proxmox_ve_ver=`dpkg-query --showformat='${Version}' --show proxmox-ve`
-libpve_storage_perl_ver=`dpkg-query --showformat='${Version}' --show libpve-storage-perl`
-pve_manager_ver=`dpkg-query --showformat='${Version}' --show pve-manager`
-pve_docs_ver=`dpkg-query --showformat='${Version}' --show pve-docs`
-major_ver=${proxmox_ve_ver%%.*}
-[ "$_DEBUG" == "on" ] && echo "Proxmox Version $proxmox_ve_ver"
-[ "$_DEBUG" == "on" ] && echo "Proxmox Major Version $major_ver"
+# Main logic
+echo "Initiating '$1' with arg '${2:-}'"
 
-# What is the 'postinst' script doing...
-[ "$_DEBUG" == "on" ] && echo "Initiating '$1' with arg $2"
 case "$1" in
-  remove)
-    # test if the truenas-proxmox repo has been downloaded
-    if [ -d ${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME} ]; then
-        [ "$_DEBUG" == "on" ] && echo "Removing git repo '${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME}'"
-        rm -rf ${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME}
+  remove|upgrade)
+    # Clean up cloned repo
+    if [ -d "${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME}" ]; then
+        echo "Removing local git repo '${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME}'"
+        rm -rf "${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME}"
     fi
 
-    # test if the TrueNAS.pm file is installed and remove it.
-    if [ -f ${LIB_PATH}${FREENAS_FILEPATH} ]; then
-        [ "$_DEBUG" == "on" ] && echo "Removing TrueNAS.pm LUN plugin at '${LIB_PATH}${FREENAS_FILEPATH}'"
-        rm -rf ${LIB_PATH}${FREENAS_FILEPATH}
+    # Remove TrueNAS.pm if present
+    if [ -f "${FREENAS_FILEPATH}" ]; then
+        echo "Removing TrueNAS.pm LUN plugin '${FREENAS_FILEPATH}'"
+        rm -f "${FREENAS_FILEPATH}"
     fi
 
-    echo "Reinstalling original Proxmox VE files"
-    [ "$_DEBUG" == "on" ] && echo "Reinstall original ${LIB_PATH}${ZFSPLUGIN_FILEPATH}"
-    cp ${LIB_PATH}${ZFSPLUGIN_FILEPATH}.orig ${LIB_PATH}${ZFSPLUGIN_FILEPATH}
+    echo "Reinstalling original Proxmox VE files..."
 
-    [ "$_DEBUG" == "on" ] && echo "Reinstall original ${LIB_PATH}${PVEMANAGER_FILEPATH}"
-    cp ${LIB_PATH}${PVEMANAGER_FILEPATH}.orig ${LIB_PATH}${PVEMANAGER_FILEPATH}
+    # Restore backups carefully
+    restore_backup "${ZFSPLUGIN_FILEPATH}"
+    restore_backup "${PVEMANAGER_FILEPATH}"
+    restore_backup "${APIDOC_FILEPATH}"
 
-    [ "$_DEBUG" == "on" ] && echo "Reinstall original ${LIB_PATH}${APIDOC_FILEPATH}"
-    cp ${LIB_PATH}${APIDOC_FILEPATH}.orig ${LIB_PATH}${APIDOC_FILEPATH}
+    echo "Restarting Proxmox services..."
+    systemctl restart pvedaemon pveproxy pvestatd pvescheduler
 
-    echo "Restarting pvedaemon..."
-    pvedaemon restart
-    echo "Restarting pveproxy..."
-    pveproxy restart
-    echo "Restarting pvestatd..."
-    pvestatd restart
-    echo "Restarting pvescheduler..."
-    systemctl restart pvescheduler.service
-
-    exit 0
     ;;
 
-  purge)
-    exit 0
+  purge|failed-upgrade|disappear|abort-upgrade|abort-remove|abort-deconfigure)
+    # No specific action needed
     ;;
 
-  upgrade)
-    # test if the TrueNAS.pm file is installed and remove it.
-    echo "Reinstalling original Proxmox VE files so upgrade can be performed"
-    if [ -f ${LIB_PATH}${FREENAS_FILEPATH} ]; then
-      [ "$_DEBUG" == "on" ] && echo "Removing 'old' TrueNAS.pm LUN plugin at '${LIB_PATH}${FREENAS_FILEPATH}'"
-      rm -rf ${LIB_PATH}${FREENAS_FILEPATH}
-    fi
-
-    [ "$_DEBUG" == "on" ] && echo "Reinstall original ${LIB_PATH}${ZFSPLUGIN_FILEPATH}"
-    cp ${LIB_PATH}${ZFSPLUGIN_FILEPATH}.orig ${LIB_PATH}${ZFSPLUGIN_FILEPATH}
-
-    [ "$_DEBUG" == "on" ] && echo "Reinstall original ${LIB_PATH}${PVEMANAGER_FILEPATH}"
-    cp ${LIB_PATH}${PVEMANAGER_FILEPATH}.orig ${LIB_PATH}${PVEMANAGER_FILEPATH}
-
-    [ "$_DEBUG" == "on" ] && echo "Reinstall original ${LIB_PATH}${APIDOC_FILEPATH}"
-    cp ${LIB_PATH}${APIDOC_FILEPATH}.orig ${LIB_PATH}${APIDOC_FILEPATH}
-
-    exit 0
+  *)
+    echo "$0: unknown argument '$1'" >&2
+    exit 1
     ;;
-
-  failed-upgrade|disappear|abort-upgrade|abort-remove|abort-deconfigure)
-    ;;
-
-  *) echo "$0: didn't understand being called with \`$1'" 1>&2
-     exit 0
-     ;;
 esac
 
 exit 0
