@@ -57,11 +57,12 @@ jobs:
           mkdir -p ${{ env.buildFolder }}/usr/share/perl5/PVE/Storage
           mkdir -p ${{ env.buildFolder }}/usr/share/perl5/REST
 
-          cp plugin-source/pve-manager/js/pvemanagerlib.js ${{ env.buildFolder }}/usr/share/pve-manager/js/
-          cp plugin-source/pve-docs/api-viewer/apidoc.js ${{ env.buildFolder }}/usr/share/pve-docs/api-viewer/
-          cp plugin-source/perl5/PVE/Storage/ZFSPlugin.pm ${{ env.buildFolder }}/usr/share/perl5/PVE/Storage/
-          cp plugin-source/perl5/PVE/Storage/LunCmd/TrueNAS.pm ${{ env.buildFolder }}/usr/share/perl5/PVE/Storage/LunCmd/
-          cp plugin-source/perl5/REST/Client.pm ${{ env.buildFolder }}/usr/share/perl5/REST/
+          cp plugin-source/truenas-proxmox/pve-manager/js/pvemanagerlib.js ${{ env.buildFolder }}/usr/share/pve-manager/js/
+          cp plugin-source/truenas-proxmox/pve-docs/api-viewer/apidoc.js ${{ env.buildFolder }}/usr/share/pve-docs/api-viewer/
+          cp plugin-source/truenas-proxmox/perl5/PVE/Storage/ZFSPlugin.pm ${{ env.buildFolder }}/usr/share/perl5/PVE/Storage/
+          cp plugin-source/truenas-proxmox/perl5/PVE/Storage/LunCmd/TrueNAS.pm ${{ env.buildFolder }}/usr/share/perl5/PVE/Storage/LunCmd/
+          cp plugin-source/truenas-proxmox/perl5/REST/Client.pm ${{ env.buildFolder }}/usr/share/perl5/REST/
+
         shell: bash
 
       - name: Fix permissions on Debian control scripts
