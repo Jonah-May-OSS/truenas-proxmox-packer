@@ -76,7 +76,6 @@ jobs:
           cp plugin-source/pve-docs/api-viewer/apidoc.js.patch \
              "${{ steps.vars.outputs.buildFolder }}/usr/share/truenas-proxmox/patches/apidoc.patch"
 
-
       - name: Update DEBIAN/control version
         shell: bash
         run: |
