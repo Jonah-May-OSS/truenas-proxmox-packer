@@ -17,78 +17,84 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set environment variables
+        shell: bash
         run: |
           REF="${{ github.event.client_payload.ref }}"
           echo "GitHub ref is: $REF"
 
-          if [[ "$REF" == *"feature_"* || "$REF" == *"ng"* ]]; then
+          if [[ "$REF" == *"feature_"* ]] || [[ "$REF" == *"ng"* ]]; then
             echo "DEB_PACKAGE_VERSION=3.0.0-alpha1" >> $GITHUB_ENV
-            echo "buildFolder=development" >> $GITHUB_ENV
+            echo "buildFolder=development"       >> $GITHUB_ENV
             echo "ARTIFACT_REPO_NAME=truenas-proxmox-snapshots" >> $GITHUB_ENV
 
           elif [[ "$REF" == *"master"* ]]; then
             echo "DEB_PACKAGE_VERSION=3.0.0-beta1" >> $GITHUB_ENV
-            echo "buildFolder=testing" >> $GITHUB_ENV
+            echo "buildFolder=testing"           >> $GITHUB_ENV
             echo "ARTIFACT_REPO_NAME=truenas-proxmox-testing" >> $GITHUB_ENV
 
           elif [[ "$REF" == *"3.0"* ]]; then
-            echo "DEB_PACKAGE_VERSION=3.0.0" >> $GITHUB_ENV
-            echo "buildFolder=stable-8" >> $GITHUB_ENV
+            echo "DEB_PACKAGE_VERSION=3.0.0"      >> $GITHUB_ENV
+            echo "buildFolder=3.0"               >> $GITHUB_ENV
             echo "ARTIFACT_REPO_NAME=truenas-proxmox" >> $GITHUB_ENV
 
           else
-            echo "Unknown branch ref, defaulting to development folder"
-            echo "DEB_PACKAGE_VERSION=3.0.0-unknown" >> $GITHUB_ENV
-            echo "buildFolder=development" >> $GITHUB_ENV
-            echo "ARTIFACT_REPO_NAME=truenas-proxmox-snapshots" >> $GITHUB_ENV
+            echo "ERROR: Unknown branch ref \"$REF\"" >&2
+            exit 1
           fi
-        shell: bash
 
       - name: Clone plugin source repository
-        run: |
-          git clone ${{ env.PLUGIN_SOURCE_REPO }} plugin-source
         shell: bash
+        run: |
+          git clone "${{ env.PLUGIN_SOURCE_REPO }}" plugin-source
 
       - name: Verify plugin-source clone succeeded
+        shell: bash
         run: |
-          if [ ! -d "plugin-source/pve-manager" ] || [ ! -d "plugin-source/perl5" ] || [ ! -d "plugin-source/pve-docs" ]; then
-            echo "ERROR: plugin-source repository is missing expected directories!"
+          if [ ! -d plugin-source/pve-manager ] || [ ! -d plugin-source/perl5 ] || [ ! -d plugin-source/pve-docs ]; then
+            echo "ERROR: Missing expected directories in plugin-source!" >&2
             exit 1
           fi
           echo "plugin-source repo looks correct."
-        shell: bash
 
       - name: Prepare filesystem layout
+        shell: bash
         run: |
           set -euo pipefail
 
+          # Create directory structure
           mkdir -p "${{ env.buildFolder }}/usr/share/pve-manager/js"
           mkdir -p "${{ env.buildFolder }}/usr/share/pve-docs/api-viewer"
           mkdir -p "${{ env.buildFolder }}/usr/share/perl5/PVE/Storage"
           mkdir -p "${{ env.buildFolder }}/usr/share/perl5/PVE/Storage/LunCmd"
           mkdir -p "${{ env.buildFolder }}/usr/share/perl5/REST"
 
-          cp "plugin-source/pve-manager/js/pvemanagerlib.js" "${{ env.buildFolder }}/usr/share/pve-manager/js/"
-          cp "plugin-source/pve-docs/api-viewer/apidoc.js" "${{ env.buildFolder }}/usr/share/pve-docs/api-viewer/"
-          cp "plugin-source/perl5/PVE/Storage/ZFSPlugin.pm" "${{ env.buildFolder }}/usr/share/perl5/PVE/Storage/"
-          cp "plugin-source/perl5/PVE/Storage/LunCmd/TrueNAS.pm" "${{ env.buildFolder }}/usr/share/perl5/PVE/Storage/LunCmd/"
-          cp "plugin-source/perl5/REST/Client.pm" "${{ env.buildFolder }}/usr/share/perl5/REST/"
-        shell: bash
+          # Copy JavaScript assets directly from repo
+          cp plugin-source/pve-manager/js/pvemanagerlib.js \
+            "${{ env.buildFolder }}/usr/share/pve-manager/js/"
+          cp plugin-source/pve-docs/api-viewer/apidoc.js \
+            "${{ env.buildFolder }}/usr/share/pve-docs/api-viewer/"
+
+          # Copy Perl modules
+          cp plugin-source/perl5/PVE/Storage/ZFSPlugin.pm \
+            "${{ env.buildFolder }}/usr/share/perl5/PVE/Storage/"
+          cp plugin-source/perl5/PVE/Storage/LunCmd/TrueNAS.pm \
+            "${{ env.buildFolder }}/usr/share/perl5/PVE/Storage/LunCmd/"
+          cp plugin-source/perl5/REST/Client.pm \
+            "${{ env.buildFolder }}/usr/share/perl5/REST/"
 
       - name: Fix permissions on Debian control scripts
+        shell: bash
         run: |
           set -euo pipefail
-
-          sudo chmod 0755 "${{ env.buildFolder }}/DEBIAN/postinst" || true
-          sudo chmod 0755 "${{ env.buildFolder }}/DEBIAN/postrm" || true
-          sudo chmod 0755 "${{ env.buildFolder }}/DEBIAN/prerm" || true
-          sudo chmod 0755 "${{ env.buildFolder }}/DEBIAN/preinst" || true
-        shell: bash
+          chmod +x "${{ env.buildFolder }}/DEBIAN/postinst" || true
+          chmod +x "${{ env.buildFolder }}/DEBIAN/postrm"   || true
+          chmod +x "${{ env.buildFolder }}/DEBIAN/prerm"    || true
+          chmod +x "${{ env.buildFolder }}/DEBIAN/preinst"  || true
 
       - name: Verify critical plugin files exist before build
+        shell: bash
         run: |
           set -euo pipefail
-
           REQUIRED_FILES=(
             "${{ env.buildFolder }}/usr/share/pve-manager/js/pvemanagerlib.js"
             "${{ env.buildFolder }}/usr/share/pve-docs/api-viewer/apidoc.js"
@@ -99,18 +105,17 @@ jobs:
 
           for file in "${REQUIRED_FILES[@]}"; do
             if [ ! -f "$file" ]; then
-              echo "ERROR: Critical file missing before build: $file"
+              echo "ERROR: Critical file missing: $file" >&2
               exit 1
             fi
           done
-
           echo "All critical plugin files are present."
-        shell: bash
 
       - name: Build Debian package
-        run: |
-          sudo dpkg-deb -Zgzip --build "${{ env.buildFolder }}" "${{ env.DEB_PACKAGE_NAME }}_${{ env.DE_BPACKAGE_VERSION }}_all.deb"
         shell: bash
+        run: |
+          sudo dpkg-deb -Zgzip --build "${{ env.buildFolder }}" \
+            "${{ env.DEB_PACKAGE_NAME }}_${{ env.DEB_PACKAGE_VERSION }}_all.deb"
 
       - name: Push Debian package to Cloudsmith
         uses: cloudsmith-io/action@master
@@ -122,4 +127,4 @@ jobs:
           repo: ${{ env.ARTIFACT_REPO_NAME }}
           distro: debian
           release: ${{ env.DEB_DISTRO_VERSION }}
-          file: ${{ env.DEB_PACKAGE_NAME }}_${{ env.DE_BPACKAGE_VERSION }}_all.deb
+          file: ${{ env.DEB_PACKAGE_NAME }}_${{ env.DEB_PACKAGE_VERSION }}_all.deb
