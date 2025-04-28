@@ -26,22 +26,24 @@ jobs:
         shell: bash
         run: |
           REF="${{ github.event.client_payload.ref }}"
-          echo "GitHub ref is: $REF"
+          # Strip refs/heads/ to get branch name
+          BRANCH="${REF#refs/heads/}"
+          echo "GitHub branch is: $BRANCH"
 
-          if [[ "$REF" == feature_* ]] || [[ "$REF" == ng ]]; then
+          if [[ "$BRANCH" == feature_* ]] || [[ "$BRANCH" == ng ]]; then
             FOLDER="development"
             VERSION="3.0.0-alpha1"
             REPO_NAME="truenas-proxmox-snapshots"
-          elif [[ "$REF" == master ]]; then
+          elif [[ "$BRANCH" == master ]]; then
             FOLDER="testing"
             VERSION="3.0.0-beta1"
             REPO_NAME="truenas-proxmox-testing"
-          elif [[ "$REF" =~ ^(v?3\.0|3\.0.*)$ ]]; then
+          elif [[ "$BRANCH" =~ ^(v?3\.0|3\.0.*)$ ]]; then
             FOLDER="stable"
             VERSION="3.0.0"
             REPO_NAME="truenas-proxmox"
           else
-            echo "ERROR: Unknown branch ref '$REF'" >&2
+            echo "ERROR: Unknown branch '$BRANCH'" >&2
             exit 1
           fi
           echo "buildFolder=$FOLDER" >> $GITHUB_ENV
