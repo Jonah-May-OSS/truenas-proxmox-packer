@@ -18,13 +18,11 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ${{ env.PACKER_REPO }}
-          path: packer
 
       - name: Set environment variables
         shell: bash
         run: |
           REF="${{ github.event.client_payload.ref }}"
-          # Strip refs/heads/ prefix
           BRANCH="${REF#refs/heads/}"
           echo "GitHub branch is: $BRANCH"
 
@@ -58,17 +56,30 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          rsync -a plugin-source/ packer/${{ env.buildFolder }}/
+          rsync -a plugin-source/ "${{ env.buildFolder }}/"
 
       - name: Fix permissions on DEBIAN metadata and scripts
         shell: bash
         run: |
-          chmod -R 0755 packer/${{ env.buildFolder }}/DEBIAN
+          chmod -R 0755 "${{ env.buildFolder }}/DEBIAN"
+
+      - name: Sanitize DEBIAN/control to binary stanza only
+        shell: bash
+        run: |
+          CONTROL="${{ env.buildFolder }}/DEBIAN/control"
+          if [ ! -f "$CONTROL" ]; then
+            echo "ERROR: control file not found at $CONTROL" >&2
+            exit 1
+          fi
+          sed -n '1,/^Package:/d' "$CONTROL" \
+            | sed "1iPackage: ${{ env.DEB_PACKAGE_NAME }}" \
+            > "${CONTROL}.tmp"
+          mv "${CONTROL}.tmp" "$CONTROL"
 
       - name: Update DEBIAN/control Version
         shell: bash
         run: |
-          CONTROL_FILE="packer/${{ env.buildFolder }}/DEBIAN/control"
+          CONTROL_FILE="${{ env.buildFolder }}/DEBIAN/control"
           if [ ! -f "$CONTROL_FILE" ]; then
             echo "ERROR: control file not found at $CONTROL_FILE" >&2
             exit 1
@@ -78,8 +89,8 @@ jobs:
       - name: Build Debian package
         shell: bash
         run: |
-          dpkg-deb -Zgzip --build packer/${{ env.buildFolder }} \
-            ${DEB_PACKAGE_NAME}_${DEB_PACKAGE_VERSION}_all.deb
+          dpkg-deb -Zgzip --build "${{ env.buildFolder }}" \
+            "${{ env.DEB_PACKAGE_NAME }}_${{ env.DEB_PACKAGE_VERSION }}_all.deb"
 
       - name: Push to Cloudsmith
         uses: cloudsmith-io/action@master
@@ -91,4 +102,4 @@ jobs:
           repo: ${{ env.ARTIFACT_REPO_NAME }}
           distro: debian
           release: ${{ env.DEB_DISTRO_VERSION }}
-          file: ${DEB_PACKAGE_NAME}_${DEB_PACKAGE_VERSION}_all.deb
+          file: "${{ env.DEB_PACKAGE_NAME }}_${{ env.DEB_PACKAGE_VERSION }}_all.deb"
