@@ -13,18 +13,14 @@ jobs:
   build_package:
     runs-on: ubuntu-latest
     steps:
-      - name: Install dpkg and checkout code
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y dpkg
-        shell: bash
-      
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Set environment variables based on branch
         run: |
           REF="${{ github.event.client_payload.ref }}"
-          
+          echo "GitHub ref is: $REF"
+
           if [[ "$REF" == *"feature_"* || "$REF" == *"ng"* ]]; then
             echo "DEB_PACKAGE_VERSION=3.0.0-alpha1" >> $GITHUB_ENV
             echo "gitBranch=development" >> $GITHUB_ENV
@@ -42,13 +38,22 @@ jobs:
             echo "gitBranch=stable/v3.0" >> $GITHUB_ENV
             echo "DEB_REPO_COMPONENT=main" >> $GITHUB_ENV
             echo "ARTIFACT_REPO_NAME=truenas-proxmox" >> $GITHUB_ENV
+
+          else
+            echo "Unknown branch ref, defaulting to development branch"
+            echo "DEB_PACKAGE_VERSION=3.0.0-unknown" >> $GITHUB_ENV
+            echo "gitBranch=development" >> $GITHUB_ENV
+            echo "DEB_REPO_COMPONENT=development" >> $GITHUB_ENV
+            echo "ARTIFACT_REPO_NAME=truenas-proxmox-snapshots" >> $GITHUB_ENV
           fi
         shell: bash
 
-      - name: Fix permissions on postinst and postrm
+      - name: Fix permissions on Debian control scripts
         run: |
-          sudo chmod 0755 ${{ env.gitBranch }}/DEBIAN/postinst
-          sudo chmod 0755 ${{ env.gitBranch }}/DEBIAN/postrm
+          sudo chmod 0755 ${{ env.gitBranch }}/DEBIAN/postinst || true
+          sudo chmod 0755 ${{ env.gitBranch }}/DEBIAN/postrm || true
+          sudo chmod 0755 ${{ env.gitBranch }}/DEBIAN/prerm || true
+          sudo chmod 0755 ${{ env.gitBranch }}/DEBIAN/preinst || true
         shell: bash
 
       - name: Build Debian package
