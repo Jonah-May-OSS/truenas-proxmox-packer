@@ -68,12 +68,14 @@ jobs:
              "${{ steps.vars.outputs.buildFolder }}/usr/share/perl5/PVE/Storage/LunCmd/"
 
       - name: Copy GUI patch files
+        shell: bash
         run: |
           mkdir -p "${{ steps.vars.outputs.buildFolder }}/usr/share/truenas-proxmox/patches"
-          cp plugin-source/pve-manager/js/pvemanagerlib.patch \
-             "${{ steps.vars.outputs.buildFolder }}/usr/share/truenas-proxmox/patches/"
-          cp plugin-source/pve-docs/api-viewer/apidoc.patch \
-             "${{ steps.vars.outputs.buildFolder }}/usr/share/truenas-proxmox/patches/"
+          cp plugin-source/pve-manager/js/pvemanagerlib.js.patch \
+             "${{ steps.vars.outputs.buildFolder }}/usr/share/truenas-proxmox/patches/pvemanagerlib.patch"
+          cp plugin-source/pve-docs/api-viewer/apidoc.js.patch \
+             "${{ steps.vars.outputs.buildFolder }}/usr/share/truenas-proxmox/patches/apidoc.patch"
+
 
       - name: Update DEBIAN/control version
         shell: bash
