@@ -1,4 +1,3 @@
-# action.yml
 name: TrueNAS Plugin for Proxmox VE Packager
 
 on:
@@ -17,7 +16,7 @@ jobs:
       - name: Checkout build repository
         uses: actions/checkout@v4
 
-      - name: Set environment variables based on branch
+      - name: Set environment variables
         run: |
           REF="${{ github.event.client_payload.ref }}"
           echo "GitHub ref is: $REF"
@@ -25,26 +24,22 @@ jobs:
           if [[ "$REF" == *"feature_"* || "$REF" == *"ng"* ]]; then
             echo "DEB_PACKAGE_VERSION=3.0.0-alpha1" >> $GITHUB_ENV
             echo "buildFolder=development" >> $GITHUB_ENV
-            echo "DEB_REPO_COMPONENT=development" >> $GITHUB_ENV
             echo "ARTIFACT_REPO_NAME=truenas-proxmox-snapshots" >> $GITHUB_ENV
 
           elif [[ "$REF" == *"master"* ]]; then
             echo "DEB_PACKAGE_VERSION=3.0.0-beta1" >> $GITHUB_ENV
             echo "buildFolder=testing" >> $GITHUB_ENV
-            echo "DEB_REPO_COMPONENT=testing" >> $GITHUB_ENV
             echo "ARTIFACT_REPO_NAME=truenas-proxmox-testing" >> $GITHUB_ENV
 
           elif [[ "$REF" == *"3.0"* ]]; then
             echo "DEB_PACKAGE_VERSION=3.0.0" >> $GITHUB_ENV
             echo "buildFolder=stable-8" >> $GITHUB_ENV
-            echo "DEB_REPO_COMPONENT=main" >> $GITHUB_ENV
             echo "ARTIFACT_REPO_NAME=truenas-proxmox" >> $GITHUB_ENV
 
           else
             echo "Unknown branch ref, defaulting to development folder"
             echo "DEB_PACKAGE_VERSION=3.0.0-unknown" >> $GITHUB_ENV
             echo "buildFolder=development" >> $GITHUB_ENV
-            echo "DEB_REPO_COMPONENT=development" >> $GITHUB_ENV
             echo "ARTIFACT_REPO_NAME=truenas-proxmox-snapshots" >> $GITHUB_ENV
           fi
         shell: bash
@@ -54,10 +49,19 @@ jobs:
           git clone ${{ env.PLUGIN_SOURCE_REPO }} plugin-source
         shell: bash
 
-      - name: Copy plugin files into package build directory
+      - name: Prepare filesystem layout
         run: |
-          mkdir -p ${{ env.buildFolder }}/usr
-          cp -r plugin-source/usr/* ${{ env.buildFolder }}/usr/
+          mkdir -p ${{ env.buildFolder }}/usr/share/pve-manager/js
+          mkdir -p ${{ env.buildFolder }}/usr/share/pve-docs/api-viewer
+          mkdir -p ${{ env.buildFolder }}/usr/share/perl5/PVE/Storage/LunCmd
+          mkdir -p ${{ env.buildFolder }}/usr/share/perl5/PVE/Storage
+          mkdir -p ${{ env.buildFolder }}/usr/share/perl5/REST
+
+          cp plugin-source/pve-manager/js/pvemanagerlib.js ${{ env.buildFolder }}/usr/share/pve-manager/js/
+          cp plugin-source/pve-docs/api-viewer/apidoc.js ${{ env.buildFolder }}/usr/share/pve-docs/api-viewer/
+          cp plugin-source/perl5/PVE/Storage/ZFSPlugin.pm ${{ env.buildFolder }}/usr/share/perl5/PVE/Storage/
+          cp plugin-source/perl5/PVE/Storage/LunCmd/TrueNAS.pm ${{ env.buildFolder }}/usr/share/perl5/PVE/Storage/LunCmd/
+          cp plugin-source/perl5/REST/Client.pm ${{ env.buildFolder }}/usr/share/perl5/REST/
         shell: bash
 
       - name: Fix permissions on Debian control scripts
