@@ -7,10 +7,8 @@ _DEBUG="on"
 
 # ── Detect Proxmox version ──────────────────────────────────────────────────────
 if command -v pveversion >/dev/null 2>&1; then
-  # e.g. “pve-manager: 8.4.0 (running kernel: 6.6.21-2-pve)”
   PVE_VERSION=$(pveversion -v | awk '/^pve-manager:/ {print $2}' | head -1)
 else
-  # fallback: read /etc/os-release if needed
   PVE_VERSION=$(grep '^VERSION_ID=' /etc/os-release | cut -d\" -f2 || echo "")
 fi
 MAJOR_VER=${PVE_VERSION%%.*}
@@ -20,9 +18,8 @@ MAJOR_VER=${PVE_VERSION%%.*}
 
 # ── Set LIB_PATH based on major version ─────────────────────────────────────────
 case "$MAJOR_VER" in
-  8) LIB_PATH="/usr/share/pve-8" ;;
   7) LIB_PATH="/usr/share/pve-7" ;;
-  *) LIB_PATH="/usr/share"   ;;
+  *) LIB_PATH="/usr/share"      ;;
 esac
 
 # ── Define plugin file locations ────────────────────────────────────────────────
