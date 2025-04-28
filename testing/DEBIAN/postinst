@@ -1,15 +1,17 @@
-#!/bin/bash
-# Abort immediately on any errors or unset variables
-set -euo pipefail
+#!/bin/sh
+# TrueNAS-Proxmox post-install script (DEBIAN/postinst)
+# Abort on any error or unset variable
+set -eu
 
 # Debug toggle
-_DEBUG="on"
+_DEBUG=${_DEBUG:-on}
 
-# ── Detect Proxmox version ──────────────────────────────────────────────────────
-if command -v pveversion >/dev/null 2>&1; then
-  PVE_VERSION=$(pveversion -v | awk '/^pve-manager:/ {print $2}' | head -1)
+# ── Detect Proxmox version via dpkg-query ───────────────────────────────────────
+# Use the installed pve-manager package version directly
+if PVE_VERSION=$(dpkg-query --showformat='${Version}' --show pve-manager 2>/dev/null); then
+  : # PVE_VERSION is set
 else
-  PVE_VERSION=$(grep '^VERSION_ID=' /etc/os-release | cut -d\" -f2 || echo "")
+  PVE_VERSION="unknown"
 fi
 MAJOR_VER=${PVE_VERSION%%.*}
 
@@ -41,8 +43,7 @@ case "${1:-configure}" in
       "$ZFSPLUGIN_FILEPATH" \
       "$APIDOC_FILEPATH" \
       "$TRUENAS_PLUGIN_FILEPATH" \
-      "$REST_CLIENT_FILEPATH"
-    do
+      "$REST_CLIENT_FILEPATH"; do
       if [ ! -f "$file" ]; then
         echo "  ERROR: Required file missing: $file"
         missing=1
