@@ -69,6 +69,15 @@ jobs:
           fi
           sed -i "s/^Version:.*$/Version: ${{ steps.vars.outputs.debVersion }}/" "$CONTROL_FILE"
 
+      - name: Ensure maintainer scripts are executable
+        shell: bash
+        run: |
+          for script in preinst postinst prerm postrm; do
+            if [ -f "${{ steps.vars.outputs.buildFolder }}/DEBIAN/$script" ]; then
+              chmod 0755 "${{ steps.vars.outputs.buildFolder }}/DEBIAN/$script"
+            fi
+          done
+
       - name: Build Debian package
         shell: bash
         run: |
