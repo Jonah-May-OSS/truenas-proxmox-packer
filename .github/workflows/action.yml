@@ -43,9 +43,9 @@ jobs:
             echo "ERROR: Unknown branch '$BRANCH'" >&2
             exit 1
           fi
-          echo ::set-output name=buildFolder::$FOLDER
-          echo ::set-output name=debVersion::$VERSION
-          echo ::set-output name=artifactRepo::$REPO_NAME
+          echo "::set-output name=buildFolder::$FOLDER"
+          echo "::set-output name=debVersion::$VERSION"
+          echo "::set-output name=artifactRepo::$REPO_NAME"
 
       - name: Checkout plugin source
         uses: actions/checkout@v4
@@ -59,16 +59,15 @@ jobs:
           set -euo pipefail
           rsync -a plugin-source/ "${{ steps.vars.outputs.buildFolder }}/"
 
-      - name: Inject version into DEBIAN/control
+      - name: Update DEBIAN/control version
         shell: bash
         run: |
-          CONTROL="${{ steps.vars.outputs.buildFolder }}/DEBIAN/control"
-          if [ ! -f "$CONTROL" ]; then
-            echo "ERROR: control file not found at $CONTROL" >&2
+          CONTROL_FILE="${{ steps.vars.outputs.buildFolder }}/DEBIAN/control"
+          if [ ! -f "$CONTROL_FILE" ]; then
+            echo "ERROR: Control file not found at $CONTROL_FILE" >&2
             exit 1
           fi
-          # Replace the Version line with our computed version
-          sed -i "s/^Version:.*/Version: ${{ steps.vars.outputs.debVersion }}/" "$CONTROL"
+          sed -i "s/^Version:.*$/Version: ${{ steps.vars.outputs.debVersion }}/" "$CONTROL_FILE"
 
       - name: Build Debian package
         shell: bash
