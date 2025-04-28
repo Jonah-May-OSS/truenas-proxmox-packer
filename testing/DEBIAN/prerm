@@ -1,4 +1,5 @@
 #!/bin/bash
+# Abort immediately on errors, unset variables, or pipeline failures
 set -euo pipefail
 
 _DEBUG="on"
@@ -7,40 +8,43 @@ LIB_PATH="/usr/share"
 PVEMANAGER_FILEPATH="${LIB_PATH}/pve-manager/js/pvemanagerlib.js"
 ZFSPLUGIN_FILEPATH="${LIB_PATH}/perl5/PVE/Storage/ZFSPlugin.pm"
 APIDOC_FILEPATH="${LIB_PATH}/pve-docs/api-viewer/apidoc.js"
-TRUENAS_FILEPATH="${LIB_PATH}/perl5/PVE/Storage/LunCmd/TrueNAS.pm"
+TRUENAS_PLUGIN_FILEPATH="${LIB_PATH}/perl5/PVE/Storage/LunCmd/TrueNAS.pm"
 
 restore_backup() {
     local orig_file="$1.orig"
     local target_file="$1"
     if [ -f "$orig_file" ]; then
-        echo "Restoring original file $target_file from $orig_file"
+        echo "Restoring backup: $target_file"
         cp "$orig_file" "$target_file"
     else
-        echo "WARNING: Backup $orig_file missing. Skipping restore for $target_file."
+        echo "No backup found for $target_file; skipping."
     fi
 }
 
-echo "Initiating 'prerm' for TrueNAS-Proxmox package with argument '${1:-}'"
+echo "Initiating 'prerm' for TrueNAS-Proxmox package with argument '${1:-}'..."
 
-case "$1" in
+case "${1:-}" in
   remove|upgrade|deconfigure)
-    echo "Restoring original Proxmox VE files..."
+    echo "Restoring original Proxmox VE files before removal..."
+
     restore_backup "${ZFSPLUGIN_FILEPATH}"
     restore_backup "${PVEMANAGER_FILEPATH}"
     restore_backup "${APIDOC_FILEPATH}"
 
-    if [ -f "${TRUENAS_FILEPATH}" ]; then
-        echo "Removing TrueNAS.pm LUN plugin..."
-        rm -f "${TRUENAS_FILEPATH}"
+    if [ -f "${TRUENAS_PLUGIN_FILEPATH}" ]; then
+        echo "Removing TrueNAS.pm plugin file..."
+        rm -f "${TRUENAS_PLUGIN_FILEPATH}"
     fi
+
+    echo "Pre-removal actions complete."
     ;;
 
   abort-upgrade|abort-remove|abort-deconfigure)
-    echo "Abort action. No changes."
+    echo "Abort detected. No changes made."
     ;;
 
   *)
-    echo "$0: Unknown argument '$1'" >&2
+    echo "ERROR: Unknown action '$1'" >&2
     exit 1
     ;;
 esac
