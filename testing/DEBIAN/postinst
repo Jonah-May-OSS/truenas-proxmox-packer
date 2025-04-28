@@ -2,11 +2,30 @@
 # Abort immediately on any errors or unset variables
 set -euo pipefail
 
-# Debugging toggle
+# Debug toggle
 _DEBUG="on"
 
-# Define standard Proxmox paths
-LIB_PATH="/usr/share"
+# ── Detect Proxmox version ──────────────────────────────────────────────────────
+if command -v pveversion >/dev/null 2>&1; then
+  # e.g. “pve-manager: 8.4.0 (running kernel: 6.6.21-2-pve)”
+  PVE_VERSION=$(pveversion -v | awk '/^pve-manager:/ {print $2}' | head -1)
+else
+  # fallback: read /etc/os-release if needed
+  PVE_VERSION=$(grep '^VERSION_ID=' /etc/os-release | cut -d\" -f2 || echo "")
+fi
+MAJOR_VER=${PVE_VERSION%%.*}
+
+[ "$_DEBUG" = "on" ] && echo "Proxmox Version: $PVE_VERSION"
+[ "$_DEBUG" = "on" ] && echo "Proxmox Major Version: $MAJOR_VER"
+
+# ── Set LIB_PATH based on major version ─────────────────────────────────────────
+case "$MAJOR_VER" in
+  8) LIB_PATH="/usr/share/pve-8" ;;
+  7) LIB_PATH="/usr/share/pve-7" ;;
+  *) LIB_PATH="/usr/share"   ;;
+esac
+
+# ── Define plugin file locations ────────────────────────────────────────────────
 PVEMANAGER_FILEPATH="${LIB_PATH}/pve-manager/js/pvemanagerlib.js"
 ZFSPLUGIN_FILEPATH="${LIB_PATH}/perl5/PVE/Storage/ZFSPlugin.pm"
 APIDOC_FILEPATH="${LIB_PATH}/pve-docs/api-viewer/apidoc.js"
@@ -20,11 +39,15 @@ case "${1:-configure}" in
     echo "Verifying required files after install..."
 
     missing=0
-
-    # Verify critical files exist
-    for file in "${PVEMANAGER_FILEPATH}" "${ZFSPLUGIN_FILEPATH}" "${APIDOC_FILEPATH}" "${TRUENAS_PLUGIN_FILEPATH}" "${REST_CLIENT_FILEPATH}"; do
+    for file in \
+      "$PVEMANAGER_FILEPATH" \
+      "$ZFSPLUGIN_FILEPATH" \
+      "$APIDOC_FILEPATH" \
+      "$TRUENAS_PLUGIN_FILEPATH" \
+      "$REST_CLIENT_FILEPATH"
+    do
       if [ ! -f "$file" ]; then
-        echo "ERROR: Required file missing: $file"
+        echo "  ERROR: Required file missing: $file"
         missing=1
       fi
     done
@@ -36,11 +59,10 @@ case "${1:-configure}" in
 
     echo "All required files are present."
 
-    # Optionally reload Proxmox services
     echo "Reloading Proxmox services (best effort)..."
-    systemctl reload-or-restart pvedaemon.service || true
-    systemctl reload-or-restart pveproxy.service || true
-    systemctl reload-or-restart pvestatd.service || true
+    systemctl reload-or-restart pvedaemon.service  || true
+    systemctl reload-or-restart pveproxy.service   || true
+    systemctl reload-or-restart pvestatd.service   || true
     systemctl reload-or-restart pvescheduler.service || true
 
     echo "TrueNAS-Proxmox integration successfully installed."
