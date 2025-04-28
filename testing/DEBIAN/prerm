@@ -1,18 +1,18 @@
 #!/bin/bash
-# Abort immediately if a command fails, if a variable is unset, or if a pipeline fails
+# Abort immediately on errors, unset variables, or pipeline failures
 set -euo pipefail
 
 # Debugging toggle
 _DEBUG="on"
 
-# Setup base variables
+# Setup base paths
 LIB_PATH="/usr/share"
 PVEMANAGER_FILEPATH="${LIB_PATH}/pve-manager/js/pvemanagerlib.js"
 ZFSPLUGIN_FILEPATH="${LIB_PATH}/perl5/PVE/Storage/ZFSPlugin.pm"
 APIDOC_FILEPATH="${LIB_PATH}/pve-docs/api-viewer/apidoc.js"
-FREENAS_FILEPATH="${LIB_PATH}/perl5/PVE/Storage/LunCmd/TrueNAS.pm"
+TRUENAS_FILEPATH="${LIB_PATH}/perl5/PVE/Storage/LunCmd/TrueNAS.pm"
 
-# Utility: Restore a backup if it exists
+# Utility: Restore backup if it exists
 restore_backup() {
     local orig_file="$1.orig"
     local target_file="$1"
@@ -24,8 +24,36 @@ restore_backup() {
     fi
 }
 
-echo "Initiating '$1' with arg '${2:-}'"
+echo "Initiating 'prerm' for TrueNAS-Proxmox package with argument '$1'"
 
 case "$1" in
   remove|upgrade|deconfigure)
-    echo "Preparing system for removal of
+    echo "Preparing system for removal or upgrade of truenas-proxmox package..."
+
+    # Restore original Proxmox files if backups exist
+    restore_backup "${ZFSPLUGIN_FILEPATH}"
+    restore_backup "${PVEMANAGER_FILEPATH}"
+    restore_backup "${APIDOC_FILEPATH}"
+
+    # Remove TrueNAS LUN plugin file if it exists
+    if [ -f "${TRUENAS_FILEPATH}" ]; then
+        echo "Removing TrueNAS.pm plugin '${TRUENAS_FILEPATH}'"
+        rm -f "${TRUENAS_FILEPATH}"
+    fi
+
+    # Restart Proxmox services gracefully
+    echo "Restarting Proxmox services to apply clean state..."
+    systemctl restart pvedaemon pveproxy pvestatd pvescheduler
+    ;;
+
+  abort-upgrade|abort-remove|abort-deconfigure)
+    echo "Abort action detected. No changes made."
+    ;;
+
+  *)
+    echo "$0: unknown argument '$1'" >&2
+    exit 1
+    ;;
+esac
+
+exit 0
