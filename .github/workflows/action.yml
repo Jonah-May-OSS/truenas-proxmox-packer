@@ -63,7 +63,7 @@ jobs:
         run: |
           chmod -R 0755 "${{ env.buildFolder }}/DEBIAN"
 
-      - name: Sanitize DEBIAN/control to binary stanza only
+            - name: Strip source stanza from control
         shell: bash
         run: |
           CONTROL="${{ env.buildFolder }}/DEBIAN/control"
@@ -71,9 +71,10 @@ jobs:
             echo "ERROR: control file not found at $CONTROL" >&2
             exit 1
           fi
-          sed -n '1,/^Package:/d' "$CONTROL" \
-            | sed "1iPackage: ${{ env.DEB_PACKAGE_NAME }}" \
-            > "${CONTROL}.tmp"
+          # Find the line number of the Package: stanza
+          LINE=$(grep -n '^Package:' "$CONTROL" | cut -d: -f1)
+          # Keep only the Package stanza and everything after
+          tail -n +$LINE "$CONTROL" > "${CONTROL}.tmp"
           mv "${CONTROL}.tmp" "$CONTROL"
 
       - name: Update DEBIAN/control Version
