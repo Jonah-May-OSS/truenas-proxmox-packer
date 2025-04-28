@@ -10,7 +10,7 @@ Vcs-Browser: https://github.com/Jonah-May-OSS/truenas-proxmox.git
 Homepage: https://github.com/Jonah-May-OSS/truenas-proxmox/wiki
 Package: truenas-proxmox
 Architecture: all
-Version: 3.0.0-1
+Version: 3.0.0
 Pre-Depends: librest-client-perl, git
 Provides: truenas-proxmox
 Description: TrueNAS Plugin for Proxmox VE
