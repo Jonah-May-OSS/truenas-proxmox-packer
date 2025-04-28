@@ -1,79 +1,71 @@
 #!/bin/sh
 # TrueNAS-Proxmox post-install script (DEBIAN/postinst)
-# Abort on any error or unset variable
+# Applies UI patches then verifies and reloads Proxmox services
+
 set -eu
 
 # Debug toggle
 _DEBUG=${_DEBUG:-on}
 
-# ── Detect Proxmox version via dpkg-query ───────────────────────────────────────
-# Use the installed pve-manager package version directly
-if PVE_VERSION=$(dpkg-query --showformat='${Version}' --show pve-manager 2>/dev/null); then
-  : # PVE_VERSION is set
-else
-  PVE_VERSION="unknown"
-fi
+# 1) Figure out where Proxmox stores its UI files
+#    (only version 7 used the pve-7 subdir; 8+ just use /usr/share)
+PVE_VERSION=$(dpkg-query --showformat='${Version}' --show pve-manager 2>/dev/null || echo unknown)
 MAJOR_VER=${PVE_VERSION%%.*}
-
 [ "$_DEBUG" = "on" ] && echo "Proxmox Version: $PVE_VERSION"
 [ "$_DEBUG" = "on" ] && echo "Proxmox Major Version: $MAJOR_VER"
 
-# ── Set LIB_PATH based on major version ─────────────────────────────────────────
 case "$MAJOR_VER" in
   7) LIB_PATH="/usr/share/pve-7" ;;
   *) LIB_PATH="/usr/share"      ;;
 esac
 
-# ── Define plugin file locations ────────────────────────────────────────────────
-PVEMANAGER_FILEPATH="${LIB_PATH}/pve-manager/js/pvemanagerlib.js"
-ZFSPLUGIN_FILEPATH="${LIB_PATH}/perl5/PVE/Storage/ZFSPlugin.pm"
-APIDOC_FILEPATH="${LIB_PATH}/pve-docs/api-viewer/apidoc.js"
-TRUENAS_PLUGIN_FILEPATH="${LIB_PATH}/perl5/PVE/Storage/LunCmd/TrueNAS.pm"
-REST_CLIENT_FILEPATH="${LIB_PATH}/perl5/REST/Client.pm"
+# 2) Paths to the UI and Perl plugin files
+PVEMANAGER_FILEPATH="$LIB_PATH/pve-manager/js/pvemanagerlib.js"
+APIDOC_FILEPATH="$LIB_PATH/pve-docs/api-viewer/apidoc.js"
+ZFSPLUGIN_FILEPATH="$LIB_PATH/perl5/PVE/Storage/ZFSPlugin.pm"
+TRUENAS_PLUGIN_FILEPATH="$LIB_PATH/perl5/PVE/Storage/LunCmd/TrueNAS.pm"
+REST_CLIENT_FILEPATH="$LIB_PATH/perl5/REST/Client.pm"
 
-echo "Running TrueNAS-Proxmox post-install script..."
+# 3) Where we packaged your patch-files in the .deb
+PATCH_DIR="/usr/share/truenas-proxmox/patches"
 
-case "${1:-configure}" in
-  configure)
-    echo "Verifying required files after install..."
+echo "Running TrueNAS-Proxmox post-install..."
 
-    missing=0
-    for file in \
-      "$PVEMANAGER_FILEPATH" \
-      "$ZFSPLUGIN_FILEPATH" \
-      "$APIDOC_FILEPATH" \
-      "$TRUENAS_PLUGIN_FILEPATH" \
-      "$REST_CLIENT_FILEPATH"; do
-      if [ ! -f "$file" ]; then
-        echo "  ERROR: Required file missing: $file"
-        missing=1
-      fi
-    done
+# 4) Apply the GUI patches, if they exist
+if [ -d "$PATCH_DIR" ]; then
+  echo "-- Applying pvemanagerlib.js patch"
+  patch "$PVEMANAGER_FILEPATH" < "$PATCH_DIR/pvemanagerlib.patch" || echo "   (patch failed or already applied)"
 
-    if [ "$missing" -ne 0 ]; then
-      echo "One or more required files are missing. Aborting installation."
-      exit 1
-    fi
+  echo "-- Applying apidoc.js patch"
+  patch "$APIDOC_FILEPATH"    < "$PATCH_DIR/apidoc.patch"    || echo "   (patch failed or already applied)"
+fi
 
-    echo "All required files are present."
+# 5) Now verify everything is in place
+echo "-- Verifying required files..."
+missing=0
+for f in \
+  "$PVEMANAGER_FILEPATH" \
+  "$APIDOC_FILEPATH" \
+  "$ZFSPLUGIN_FILEPATH" \
+  "$TRUENAS_PLUGIN_FILEPATH" \
+  "$REST_CLIENT_FILEPATH"
+do
+  if [ ! -f "$f" ]; then
+    echo "   ERROR: Required file missing: $f"
+    missing=1
+  fi
+done
 
-    echo "Reloading Proxmox services (best effort)..."
-    systemctl reload-or-restart pvedaemon.service  || true
-    systemctl reload-or-restart pveproxy.service   || true
-    systemctl reload-or-restart pvestatd.service   || true
-    systemctl reload-or-restart pvescheduler.service || true
+if [ "$missing" -ne 0 ]; then
+  echo "One or more required files are missing; aborting installation."
+  exit 1
+fi
 
-    echo "TrueNAS-Proxmox integration successfully installed."
-    ;;
+echo "-- All files present; reloading Proxmox services..."
+systemctl reload-or-restart pvedaemon.service    || true
+systemctl reload-or-restart pveproxy.service     || true
+systemctl reload-or-restart pvestatd.service     || true
+systemctl reload-or-restart pvescheduler.service || true
 
-  abort-upgrade|abort-remove|abort-deconfigure)
-    echo "Post-install abort detected. No changes applied."
-    ;;
-
-  *)
-    echo "ERROR: Unknown action '$1'" >&2
-    exit 1
-    ;;
-esac
-
+echo "TrueNAS-Proxmox integration successfully installed."
 exit 0
