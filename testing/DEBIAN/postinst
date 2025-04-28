@@ -1,67 +1,84 @@
-#!/bin/sh
+#!/bin/bash
 # TrueNAS-Proxmox post-install script (DEBIAN/postinst)
-# Applies UI patches then verifies and reloads Proxmox services
-
-set -eu
+# Abort on any error or unset variable
+set -euo pipefail
 
 # Debug toggle
 _DEBUG=${_DEBUG:-on}
 
-# 1) Figure out where Proxmox stores its UI files
-#    (only version 7 used the pve-7 subdir; 8+ just use /usr/share)
-PVE_VERSION=$(dpkg-query --showformat='${Version}' --show pve-manager 2>/dev/null || echo unknown)
+# ── Detect Proxmox version via dpkg-query ───────────────────────────────────────
+if PVE_VERSION=$(dpkg-query --showformat='${Version}' --show pve-manager 2>/dev/null); then
+  : # PVE_VERSION is set
+else
+  PVE_VERSION="unknown"
+fi
 MAJOR_VER=${PVE_VERSION%%.*}
-[ "$_DEBUG" = "on" ] && echo "Proxmox Version: $PVE_VERSION"
-[ "$_DEBUG" = "on" ] && echo "Proxmox Major Version: $MAJOR_VER"
+[ "$_DEBUG" = "on" ] && echo "Proxmox Version: \$PVE_VERSION"
+[ "$_DEBUG" = "on" ] && echo "Proxmox Major Version: \$MAJOR_VER"
 
-case "$MAJOR_VER" in
-  7) LIB_PATH="/usr/share/pve-7" ;;
-  *) LIB_PATH="/usr/share"      ;;
+# ── Set LIB_PATH based on major version ──────────────────────────────────────────
+case "\$MAJOR_VER" in
+  7) LIB_PATH="/usr/share/pve-7" ;;  # Proxmox 7 uses pve-7 subdir
+  *) LIB_PATH="/usr/share"      ;;  # Proxmox 8+ and others
 esac
 
-# 2) Paths to the UI and Perl plugin files
-PVEMANAGER_FILEPATH="$LIB_PATH/pve-manager/js/pvemanagerlib.js"
-APIDOC_FILEPATH="$LIB_PATH/pve-docs/api-viewer/apidoc.js"
-ZFSPLUGIN_FILEPATH="$LIB_PATH/perl5/PVE/Storage/ZFSPlugin.pm"
-TRUENAS_PLUGIN_FILEPATH="$LIB_PATH/perl5/PVE/Storage/LunCmd/TrueNAS.pm"
-REST_CLIENT_FILEPATH="$LIB_PATH/perl5/REST/Client.pm"
+# ── Define paths to plugin and UI files ─────────────────────────────────────────
+PVEMANAGER_FILEPATH="\${LIB_PATH}/pve-manager/js/pvemanagerlib.js"
+APIDOC_FILEPATH="\${LIB_PATH}/pve-docs/api-viewer/apidoc.js"
+ZFSPLUGIN_FILEPATH="\${LIB_PATH}/perl5/PVE/Storage/ZFSPlugin.pm"
+TRUENAS_PLUGIN_FILEPATH="\${LIB_PATH}/perl5/PVE/Storage/LunCmd/TrueNAS.pm"
+REST_CLIENT_FILEPATH="\${LIB_PATH}/perl5/REST/Client.pm"
 
-# 3) Where we packaged your patch-files in the .deb
+# ── Where patch files live inside the .deb ──────────────────────────────────────
 PATCH_DIR="/usr/share/truenas-proxmox/patches"
 
-echo "Running TrueNAS-Proxmox post-install..."
+echo "Running TrueNAS-Proxmox post-install script..."
 
-# 4) Apply the GUI patches, if they exist
-if [ -d "$PATCH_DIR" ]; then
-  echo "-- Applying pvemanagerlib.js patch"
-  patch "$PVEMANAGER_FILEPATH" < "$PATCH_DIR/pvemanagerlib.patch" || echo "   (patch failed or already applied)"
+# ── Backup original Proxmox files before patching ────────────────────────────────
+if [ "$_DEBUG" = "on" ]; then
+  echo "Backing up original UI and storage files before patching"
+fi
+for f in "\$PVEMANAGER_FILEPATH" "\$APIDOC_FILEPATH" "\$ZFSPLUGIN_FILEPATH"; do
+  if [ -f "\$f" ] && [ ! -f "\${f}.orig" ]; then
+    echo "-- Backing up \$f to \${f}.orig"
+    cp "\$f" "\${f}.orig"
+  fi
+done
 
-  echo "-- Applying apidoc.js patch"
-  patch "$APIDOC_FILEPATH"    < "$PATCH_DIR/apidoc.patch"    || echo "   (patch failed or already applied)"
+# ── Apply GUI patches if available ──────────────────────────────────────────────
+if [ -d "\$PATCH_DIR" ]; then
+  echo "Applying UI patches from \$PATCH_DIR"
+  patch "\$PVEMANAGER_FILEPATH" < "\$PATCH_DIR/pvemanagerlib.patch" \
+    || echo "(pvemanagerlib.js patch failed or already applied)"
+  patch "\$APIDOC_FILEPATH"    < "\$PATCH_DIR/apidoc.patch"    \
+    || echo "(apidoc.js patch failed or already applied)"
 fi
 
-# 5) Now verify everything is in place
-echo "-- Verifying required files..."
+# ── Verify all required files exist ──────────────────────────────────────────────
+echo "Verifying required files after install..."
 missing=0
-for f in \
-  "$PVEMANAGER_FILEPATH" \
-  "$APIDOC_FILEPATH" \
-  "$ZFSPLUGIN_FILEPATH" \
-  "$TRUENAS_PLUGIN_FILEPATH" \
-  "$REST_CLIENT_FILEPATH"
+for file in \
+  "\$PVEMANAGER_FILEPATH" \
+  "\$APIDOC_FILEPATH" \
+  "\$ZFSPLUGIN_FILEPATH" \
+  "\$TRUENAS_PLUGIN_FILEPATH" \
+  "\$REST_CLIENT_FILEPATH"
 do
-  if [ ! -f "$f" ]; then
-    echo "   ERROR: Required file missing: $f"
+  if [ ! -f "\$file" ]; then
+    echo "  ERROR: Required file missing: \$file"
     missing=1
   fi
 done
 
-if [ "$missing" -ne 0 ]; then
-  echo "One or more required files are missing; aborting installation."
+if [ \$missing -ne 0 ]; then
+  echo "One or more required files are missing. Aborting installation."
   exit 1
 fi
 
-echo "-- All files present; reloading Proxmox services..."
+echo "All required files are present."
+
+# ── Reload Proxmox services ──────────────────────────────────────────────────────
+echo "Reloading Proxmox services (best effort)..."
 systemctl reload-or-restart pvedaemon.service    || true
 systemctl reload-or-restart pveproxy.service     || true
 systemctl reload-or-restart pvestatd.service     || true
