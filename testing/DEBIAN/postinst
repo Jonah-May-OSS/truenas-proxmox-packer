@@ -1,149 +1,53 @@
 #!/bin/bash
-# Abort immediately if a command fails, treat unset variables as errors, and catch pipeline errors
+# Abort immediately on any errors or unset variables
 set -euo pipefail
 
-# Debugging control
+# Debugging toggle
 _DEBUG="on"
 
-# Set up patch command arguments based on debug mode
-if [ "${_DEBUG}" == "on" ]; then
-    PATCH_ARGS="--verbose -b --ignore-whitespace"
-else
-    PATCH_ARGS="-s -b --ignore-whitespace"
-fi
-
-# Get Proxmox version information FIRST
-proxmox_ve_ver=$(dpkg-query --showformat='${Version}' --show proxmox-ve || echo "8.0-1")
-libpve_storage_perl_ver=$(dpkg-query --showformat='${Version}' --show libpve-storage-perl || true)
-pve_manager_ver=$(dpkg-query --showformat='${Version}' --show pve-manager || true)
-pve_docs_ver=$(dpkg-query --showformat='${Version}' --show pve-docs || true)
-major_ver=${proxmox_ve_ver%%.*}  # Extract major version (e.g., "8" from "8.0-4")
-
-[ "${_DEBUG}" == "on" ] && echo "Proxmox Version: $proxmox_ve_ver"
-[ "${_DEBUG}" == "on" ] && echo "Proxmox Major Version: $major_ver"
-
-# Setup paths (AFTER major_ver is known)
+# Define standard Proxmox paths
 LIB_PATH="/usr/share"
-STABLE_PATH="/usr/share/pve-${major_ver}"
-PVEMANAGER_FILEPATH="${STABLE_PATH}/pve-manager/js/pvemanagerlib.js"
-ZFSPLUGIN_FILEPATH="${STABLE_PATH}/perl5/PVE/Storage/ZFSPlugin.pm"
-APIDOC_FILEPATH="${STABLE_PATH}/pve-docs/api-viewer/apidoc.js"
-FREENAS_FILEPATH="${STABLE_PATH}/perl5/PVE/Storage/LunCmd/TrueNAS.pm"
-REST_CLIENT_FILEPATH="${STABLE_PATH}/perl5/REST/Client.pm"
+PVEMANAGER_FILEPATH="${LIB_PATH}/pve-manager/js/pvemanagerlib.js"
+ZFSPLUGIN_FILEPATH="${LIB_PATH}/perl5/PVE/Storage/ZFSPlugin.pm"
+APIDOC_FILEPATH="${LIB_PATH}/pve-docs/api-viewer/apidoc.js"
+TRUENAS_PLUGIN_FILEPATH="${LIB_PATH}/perl5/PVE/Storage/LunCmd/TrueNAS.pm"
+REST_CLIENT_FILEPATH="${LIB_PATH}/perl5/REST/Client.pm"
 
-# Git settings
-GIT_REPO="https://github.com/Jonah-May-OSS/"
-GIT_LOCAL_REPO_PATH="/usr/local/src/"
-GIT_REPO_NAME="truenas-proxmox"
-GIT_BRANCH="master"
-STABLE_BRANCH="stable-${major_ver}"
+echo "Running TrueNAS-Proxmox post-install script..."
 
-# Control if we restart services at the end
-RESTART_PVE_SERVICES="no"
+case "${1:-configure}" in
+  configure)
+    echo "Verifying required files after install..."
 
-# Clone or update the truenas-proxmox repo
-if [ ! -d "${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME}/.git" ]; then
-    echo "Cloning truenas-proxmox repository..."
-    git clone "${GIT_REPO}${GIT_REPO_NAME}.git" "${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME}"
-else
-    echo "Updating truenas-proxmox repository..."
-    git -C "${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME}" fetch --all
-    git -C "${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME}" reset --hard origin/${STABLE_BRANCH} || git -C "${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME}" reset --hard origin/${GIT_BRANCH}
-fi
+    missing=0
 
-# Begin postinst actions
-echo "Initiating '$1' with arg '$2'"
-
-case "$1" in
-  triggered)
-    paths="$2"
-
-    if [[ "$2" == *apidoc* ]] && [ "$(grep -c 'truenas' "${LIB_PATH}${APIDOC_FILEPATH}" || true)" -eq 0 ]; then
-      echo "Detected apidoc update needed."
-      paths="$2 ${APIDOC_FILEPATH}"
-    fi
-
-    for fullpath in ${paths}; do
-      filename=$(basename -- "$fullpath")
-      filename="${filename%.*}"
-
-      echo "Triggering patch for $fullpath..."
-
-      case "$filename" in
-        ZFSPlugin)
-          patch ${PATCH_ARGS} "${LIB_PATH}${ZFSPLUGIN_FILEPATH}" < "${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME}${ZFSPLUGIN_FILEPATH}.patch"
-          ;;
-        pvemanagerlib)
-          patch ${PATCH_ARGS} "${LIB_PATH}${PVEMANAGER_FILEPATH}" < "${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME}${PVEMANAGER_FILEPATH}.patch"
-          ;;
-        apidoc)
-          patch ${PATCH_ARGS} "${LIB_PATH}${APIDOC_FILEPATH}" < "${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME}${APIDOC_FILEPATH}.patch"
-          ;;
-      esac
+    # Verify critical files exist
+    for file in "${PVEMANAGER_FILEPATH}" "${ZFSPLUGIN_FILEPATH}" "${APIDOC_FILEPATH}" "${TRUENAS_PLUGIN_FILEPATH}" "${REST_CLIENT_FILEPATH}"; do
+      if [ ! -f "$file" ]; then
+        echo "ERROR: Required file missing: $file"
+        missing=1
+      fi
     done
 
-    # Install missing files
-    echo "Installing TrueNAS integration files..."
-    install -m 0644 "${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME}${FREENAS_FILEPATH}" "${LIB_PATH}${FREENAS_FILEPATH}"
-    install -m 0644 "${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME}${REST_CLIENT_FILEPATH}" "${LIB_PATH}${REST_CLIENT_FILEPATH}"
-    ;;
-
-  configure)
-    echo "Configuring ${GIT_REPO_NAME} version ${GIT_BRANCH}"
-
-    # Ensure correct branch
-    GIT_BRANCH_CURRENT=$(git -C "${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME}" rev-parse --abbrev-ref HEAD)
-    if [ "${GIT_BRANCH_CURRENT}" != "${STABLE_BRANCH}" ]; then
-      git -C "${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME}" checkout "${STABLE_BRANCH}" || true
+    if [ "$missing" -ne 0 ]; then
+      echo "One or more required files are missing. Aborting installation."
+      exit 1
     fi
 
-    # Patch files if not already patched
-    if ! grep -q "truenas" "${LIB_PATH}${ZFSPLUGIN_FILEPATH}"; then
-      echo "Patching ${ZFSPLUGIN_FILEPATH}..."
-      patch ${PATCH_ARGS} "${LIB_PATH}${ZFSPLUGIN_FILEPATH}" < "${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME}${ZFSPLUGIN_FILEPATH}.patch"
-      RESTART_PVE_SERVICES="yes"
-    fi
+    echo "All required files are present."
 
-    if ! grep -q "truenas" "${LIB_PATH}${PVEMANAGER_FILEPATH}"; then
-      echo "Patching ${PVEMANAGER_FILEPATH}..."
-      patch ${PATCH_ARGS} "${LIB_PATH}${PVEMANAGER_FILEPATH}" < "${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME}${PVEMANAGER_FILEPATH}.patch"
-      RESTART_PVE_SERVICES="yes"
-    fi
+    # Optionally reload Proxmox services
+    echo "Reloading Proxmox services (best effort)..."
+    systemctl reload-or-restart pvedaemon.service || true
+    systemctl reload-or-restart pveproxy.service || true
+    systemctl reload-or-restart pvestatd.service || true
+    systemctl reload-or-restart pvescheduler.service || true
 
-    if ! grep -q "truenas" "${LIB_PATH}${APIDOC_FILEPATH}"; then
-      echo "Patching ${APIDOC_FILEPATH}..."
-      patch ${PATCH_ARGS} "${LIB_PATH}${APIDOC_FILEPATH}" < "${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME}${APIDOC_FILEPATH}.patch"
-      RESTART_PVE_SERVICES="yes"
-    fi
-
-    # Install TrueNAS integration files
-    if [ ! -f "${LIB_PATH}${FREENAS_FILEPATH}" ]; then
-      echo "Installing ${FREENAS_FILEPATH}..."
-      install -m 0644 "${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME}${FREENAS_FILEPATH}" "${LIB_PATH}${FREENAS_FILEPATH}"
-      RESTART_PVE_SERVICES="yes"
-    fi
-
-    install -m 0644 "${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME}${REST_CLIENT_FILEPATH}" "${LIB_PATH}${REST_CLIENT_FILEPATH}"
-    RESTART_PVE_SERVICES="yes"
-
-    # Restart PVE services if necessary
-    if [ "${RESTART_PVE_SERVICES}" == "yes" ]; then
-      echo "Restarting pvedaemon..."
-      systemctl restart pvedaemon
-
-      echo "Restarting pveproxy..."
-      systemctl restart pveproxy
-
-      echo "Restarting pvestatd..."
-      systemctl restart pvestatd
-
-      echo "Restarting pvescheduler..."
-      systemctl restart pvescheduler
-    fi
+    echo "TrueNAS-Proxmox integration successfully installed."
     ;;
 
   abort-upgrade|abort-remove|abort-deconfigure)
-    echo "Abort detected, no action."
+    echo "Post-install abort detected. No changes applied."
     ;;
 
   *)
