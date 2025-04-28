@@ -8,12 +8,13 @@ on:
 env:
   DEB_PACKAGE_NAME: 'truenas-proxmox'
   DEB_DISTRO_VERSION: 'any-version'
+  PLUGIN_SOURCE_REPO: 'https://github.com/Jonah-May-OSS/truenas-proxmox.git'
 
 jobs:
   build_package:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout build repository
         uses: actions/checkout@v4
 
       - name: Set environment variables based on branch
@@ -46,6 +47,17 @@ jobs:
             echo "DEB_REPO_COMPONENT=development" >> $GITHUB_ENV
             echo "ARTIFACT_REPO_NAME=truenas-proxmox-snapshots" >> $GITHUB_ENV
           fi
+        shell: bash
+
+      - name: Clone plugin source repository
+        run: |
+          git clone ${{ env.PLUGIN_SOURCE_REPO }} plugin-source
+        shell: bash
+
+      - name: Copy plugin files into package build directory
+        run: |
+          mkdir -p ${{ env.buildFolder }}/usr
+          cp -r plugin-source/usr/* ${{ env.buildFolder }}/usr/
         shell: bash
 
       - name: Fix permissions on Debian control scripts
