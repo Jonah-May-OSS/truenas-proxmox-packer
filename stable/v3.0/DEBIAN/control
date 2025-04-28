@@ -1,0 +1,17 @@
+Source: truenas-proxmox
+Section: perl
+Priority: optional
+Maintainer: Jonah May OSS <jonah@mayfamily.me>
+Uploaders: Jonah May <jonah@mayfamily.me>
+Depends: librest-client-perl, git
+Standards-Version: 4.5.0
+Vcs-Git: https://github.com/Jonah-May-OSS/truenas-proxmox.git
+Vcs-Browser: https://github.com/Jonah-May-OSS/truenas-proxmox.git
+Homepage: https://github.com/Jonah-May-OSS/truenas-proxmox/wiki
+Package: truenas-proxmox
+Architecture: all
+Version: 3.0.0-1
+Pre-Depends: librest-client-perl, git
+Provides: truenas-proxmox
+Description: TrueNAS Plugin for Proxmox VE
+ A Proxmox VE storage plugin to interface with TrueNAS APIs.
