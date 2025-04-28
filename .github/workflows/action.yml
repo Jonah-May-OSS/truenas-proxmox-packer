@@ -97,7 +97,7 @@ jobs:
           api-key: ${{ secrets.CLOUDSMITH_API_KEY }}
           command: push
           format: deb
-          owner: ksatechnologies
+          owner: jonah-may-oss
           repo: ${{ env.ARTIFACT_REPO_NAME }}
           distro: debian
           release: ${{ env.DEB_DISTRO_VERSION }}
