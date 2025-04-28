@@ -1,18 +1,14 @@
 #!/bin/bash
-# Abort immediately on errors, unset variables, or pipeline failures
 set -euo pipefail
 
-# Debugging toggle
 _DEBUG="on"
 
-# Setup base paths
 LIB_PATH="/usr/share"
 PVEMANAGER_FILEPATH="${LIB_PATH}/pve-manager/js/pvemanagerlib.js"
 ZFSPLUGIN_FILEPATH="${LIB_PATH}/perl5/PVE/Storage/ZFSPlugin.pm"
 APIDOC_FILEPATH="${LIB_PATH}/pve-docs/api-viewer/apidoc.js"
 TRUENAS_FILEPATH="${LIB_PATH}/perl5/PVE/Storage/LunCmd/TrueNAS.pm"
 
-# Utility: Restore backup if it exists
 restore_backup() {
     local orig_file="$1.orig"
     local target_file="$1"
@@ -20,38 +16,31 @@ restore_backup() {
         echo "Restoring original file $target_file from $orig_file"
         cp "$orig_file" "$target_file"
     else
-        echo "WARNING: Backup file $orig_file not found. Skipping restore for $target_file"
+        echo "WARNING: Backup $orig_file missing. Skipping restore for $target_file."
     fi
 }
 
-echo "Initiating 'prerm' for TrueNAS-Proxmox package with argument '$1'"
+echo "Initiating 'prerm' for TrueNAS-Proxmox package with argument '${1:-}'"
 
 case "$1" in
   remove|upgrade|deconfigure)
-    echo "Preparing system for removal or upgrade of truenas-proxmox package..."
-
-    # Restore original Proxmox files if backups exist
+    echo "Restoring original Proxmox VE files..."
     restore_backup "${ZFSPLUGIN_FILEPATH}"
     restore_backup "${PVEMANAGER_FILEPATH}"
     restore_backup "${APIDOC_FILEPATH}"
 
-    # Remove TrueNAS LUN plugin file if it exists
     if [ -f "${TRUENAS_FILEPATH}" ]; then
-        echo "Removing TrueNAS.pm plugin '${TRUENAS_FILEPATH}'"
+        echo "Removing TrueNAS.pm LUN plugin..."
         rm -f "${TRUENAS_FILEPATH}"
     fi
-
-    # Restart Proxmox services gracefully
-    echo "Restarting Proxmox services to apply clean state..."
-    systemctl restart pvedaemon pveproxy pvestatd pvescheduler
     ;;
 
   abort-upgrade|abort-remove|abort-deconfigure)
-    echo "Abort action detected. No changes made."
+    echo "Abort action. No changes."
     ;;
 
   *)
-    echo "$0: unknown argument '$1'" >&2
+    echo "$0: Unknown argument '$1'" >&2
     exit 1
     ;;
 esac
