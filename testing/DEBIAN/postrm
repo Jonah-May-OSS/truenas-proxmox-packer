@@ -1,62 +1,51 @@
-#!/bin/bash
-# Abort on any error, unset variable, or pipeline failure
-set -euo pipefail
+#!/bin/sh
+# TrueNAS-Proxmox post-removal script (DEBIAN/postrm)
+# Handles package remove, purge, and upgrade cleanup
 
-# Debugging toggle
-_DEBUG="on"
+set -eu
 
-# Base Proxmox file paths
+# Debug toggle
+_DEBUG=${_DEBUG:-on}
+
+# Base installation paths
 LIB_PATH="/usr/share"
-PVEMANAGER_FILEPATH="${LIB_PATH}/pve-manager/js/pvemanagerlib.js"
-ZFSPLUGIN_FILEPATH="${LIB_PATH}/perl5/PVE/Storage/ZFSPlugin.pm"
-APIDOC_FILEPATH="${LIB_PATH}/pve-docs/api-viewer/apidoc.js"
 TRUENAS_PLUGIN_FILEPATH="${LIB_PATH}/perl5/PVE/Storage/LunCmd/TrueNAS.pm"
+ZFSPLUGIN_FILEPATH="${LIB_PATH}/perl5/PVE/Storage/ZFSPlugin.pm"
+PVEMANAGER_FILEPATH="${LIB_PATH}/pve-manager/js/pvemanagerlib.js"
+APIDOC_FILEPATH="${LIB_PATH}/pve-docs/api-viewer/apidoc.js"
 
-# Utility: Restore a backup if it exists
+# Restore a .orig backup if present
 restore_backup() {
-    local orig_file="$1.orig"
-    local target_file="$1"
-    if [ -f "$orig_file" ]; then
-        echo "Restoring original file $target_file from $orig_file"
-        cp "$orig_file" "$target_file"
-    else
-        echo "No backup found for $target_file; skipping."
+    target="$1"
+    orig="${target}.orig"
+    if [ -f "$orig" ]; then
+        echo "Restoring original: $target from $orig"
+        mv -f "$orig" "$target"
     fi
 }
 
-echo "Initiating post-removal with argument '${1:-}'..."
+echo "Running postrm with action '${1:-}'..."
 
 case "${1:-}" in
-  remove|upgrade|deconfigure)
-    echo "Cleaning up TrueNAS-Proxmox installation..."
-
-    # Remove TrueNAS plugin file
-    if [ -f "${TRUENAS_PLUGIN_FILEPATH}" ]; then
-        echo "Removing '${TRUENAS_PLUGIN_FILEPATH}'"
-        rm -f "${TRUENAS_PLUGIN_FILEPATH}"
-    fi
-
-    # Restore original files
-    restore_backup "${ZFSPLUGIN_FILEPATH}"
-    restore_backup "${PVEMANAGER_FILEPATH}"
-    restore_backup "${APIDOC_FILEPATH}"
-
-    echo "Post-removal cleanup complete. No service restarts performed."
+  remove)
+    echo "-- remove: cleaning plugin files and restoring originals"
+    rm -f "$TRUENAS_PLUGIN_FILEPATH" || true
+    restore_backup "$ZFSPLUGIN_FILEPATH"
+    restore_backup "$PVEMANAGER_FILEPATH"
+    restore_backup "$APIDOC_FILEPATH"
     ;;
 
   purge)
-    echo "Purge action detected — cleaning up additional files..."
-    # (Optionally remove .orig files if you want on full purge)
-    find "${LIB_PATH}" -name '*.orig' -type f -delete || true
+    echo "-- purge: removing leftover .orig backups"
+    find "$LIB_PATH" -type f -name '*.orig' -delete || true
     ;;
 
-  abort-upgrade|abort-remove|abort-deconfigure)
-    echo "Abort action detected — no changes made."
+  upgrade|abort-upgrade)
+    echo "-- $1: no post-removal cleanup needed"
     ;;
 
   *)
-    echo "Unknown argument '$1'" >&2
-    exit 1
+    echo "-- no action for postrm arg '$1'"
     ;;
 esac
 
