@@ -1,2 +1,2 @@
-# freenas-proxmox-packer
-The freenas-proxmox package repo for create .deb files
+# truenas-proxmox-packer
+The truenas-proxmox package repo for create .deb files
