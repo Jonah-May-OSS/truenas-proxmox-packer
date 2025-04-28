@@ -49,36 +49,46 @@ jobs:
           git clone ${{ env.PLUGIN_SOURCE_REPO }} plugin-source
         shell: bash
 
+      - name: Verify plugin-source clone succeeded
+        run: |
+          if [ ! -d "plugin-source/pve-manager" ] || [ ! -d "plugin-source/perl5" ] || [ ! -d "plugin-source/pve-docs" ]; then
+            echo "ERROR: plugin-source repository is missing expected directories!"
+            exit 1
+          fi
+          echo "plugin-source repo looks correct."
+        shell: bash
+
       - name: Prepare filesystem layout
         run: |
-          mkdir -p ${{ env.buildFolder }}/usr/share/pve-manager/js
-          mkdir -p ${{ env.buildFolder }}/usr/share/pve-docs/api-viewer
-          mkdir -p ${{ env.buildFolder }}/usr/share/perl5/PVE/Storage
-          mkdir -p ${{ env.buildFolder }}/usr/share/perl5/PVE/Storage/LunCmd
-          mkdir -p ${{ env.buildFolder }}/usr/share/perl5/REST
+          set -euo pipefail
 
-          cp plugin-source/pve-manager/js/pvemanagerlib.js ${{ env.buildFolder }}/usr/share/pve-manager/js/
-          cp plugin-source/pve-docs/api-viewer/apidoc.js ${{ env.buildFolder }}/usr/share/pve-docs/api-viewer/
-          cp plugin-source/perl5/PVE/Storage/ZFSPlugin.pm ${{ env.buildFolder }}/usr/share/perl5/PVE/Storage/
-          cp plugin-source/perl5/PVE/Storage/LunCmd/TrueNAS.pm ${{ env.buildFolder }}/usr/share/perl5/PVE/Storage/LunCmd/
-          cp plugin-source/perl5/REST/Client.pm ${{ env.buildFolder }}/usr/share/perl5/REST/
+          mkdir -p "${{ env.buildFolder }}/usr/share/pve-manager/js"
+          mkdir -p "${{ env.buildFolder }}/usr/share/pve-docs/api-viewer"
+          mkdir -p "${{ env.buildFolder }}/usr/share/perl5/PVE/Storage"
+          mkdir -p "${{ env.buildFolder }}/usr/share/perl5/PVE/Storage/LunCmd"
+          mkdir -p "${{ env.buildFolder }}/usr/share/perl5/REST"
+
+          cp "plugin-source/pve-manager/js/pvemanagerlib.js" "${{ env.buildFolder }}/usr/share/pve-manager/js/"
+          cp "plugin-source/pve-docs/api-viewer/apidoc.js" "${{ env.buildFolder }}/usr/share/pve-docs/api-viewer/"
+          cp "plugin-source/perl5/PVE/Storage/ZFSPlugin.pm" "${{ env.buildFolder }}/usr/share/perl5/PVE/Storage/"
+          cp "plugin-source/perl5/PVE/Storage/LunCmd/TrueNAS.pm" "${{ env.buildFolder }}/usr/share/perl5/PVE/Storage/LunCmd/"
+          cp "plugin-source/perl5/REST/Client.pm" "${{ env.buildFolder }}/usr/share/perl5/REST/"
         shell: bash
 
       - name: Fix permissions on Debian control scripts
         run: |
-          sudo chmod 0755 ${{ env.buildFolder }}/DEBIAN/postinst || true
-          sudo chmod 0755 ${{ env.buildFolder }}/DEBIAN/postrm || true
-          sudo chmod 0755 ${{ env.buildFolder }}/DEBIAN/prerm || true
-          sudo chmod 0755 ${{ env.buildFolder }}/DEBIAN/preinst || true
+          set -euo pipefail
+
+          sudo chmod 0755 "${{ env.buildFolder }}/DEBIAN/postinst" || true
+          sudo chmod 0755 "${{ env.buildFolder }}/DEBIAN/postrm" || true
+          sudo chmod 0755 "${{ env.buildFolder }}/DEBIAN/prerm" || true
+          sudo chmod 0755 "${{ env.buildFolder }}/DEBIAN/preinst" || true
         shell: bash
 
-      - name: Build Debian package
+      - name: Verify critical plugin files exist before build
         run: |
-          sudo dpkg-deb -Zgzip --build ${{ env.buildFolder }} ${{ env.DEB_PACKAGE_NAME }}_${{ env.DEB_PACKAGE_VERSION }}_all.deb
-        shell: bash
+          set -euo pipefail
 
-      - name: Verify critical files exist before upload
-        run: |
           REQUIRED_FILES=(
             "${{ env.buildFolder }}/usr/share/pve-manager/js/pvemanagerlib.js"
             "${{ env.buildFolder }}/usr/share/pve-docs/api-viewer/apidoc.js"
@@ -89,12 +99,17 @@ jobs:
 
           for file in "${REQUIRED_FILES[@]}"; do
             if [ ! -f "$file" ]; then
-              echo "ERROR: Critical file missing: $file"
+              echo "ERROR: Critical file missing before build: $file"
               exit 1
             fi
           done
 
-          echo "All required plugin files are present."
+          echo "All critical plugin files are present."
+        shell: bash
+
+      - name: Build Debian package
+        run: |
+          sudo dpkg-deb -Zgzip --build "${{ env.buildFolder }}" "${{ env.DEB_PACKAGE_NAME }}_${{ env.DE_BPACKAGE_VERSION }}_all.deb"
         shell: bash
 
       - name: Push Debian package to Cloudsmith
@@ -107,4 +122,4 @@ jobs:
           repo: ${{ env.ARTIFACT_REPO_NAME }}
           distro: debian
           release: ${{ env.DEB_DISTRO_VERSION }}
-          file: ${{ env.DEB_PACKAGE_NAME }}_${{ env.DEB_PACKAGE_VERSION }}_all.deb
+          file: ${{ env.DEB_PACKAGE_NAME }}_${{ env.DE_BPACKAGE_VERSION }}_all.deb
