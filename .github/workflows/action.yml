@@ -1,3 +1,4 @@
+```yaml
 name: TrueNAS Plugin for Proxmox VE Packager
 
 on:
@@ -67,7 +68,7 @@ jobs:
           cp plugin-source/perl5/PVE/Storage/LunCmd/TrueNAS.pm \
              "${{ steps.vars.outputs.buildFolder }}/usr/share/perl5/PVE/Storage/LunCmd/"
 
-      - name: Copy GUI patch files
+      - name: Copy patch files
         shell: bash
         run: |
           mkdir -p "${{ steps.vars.outputs.buildFolder }}/usr/share/truenas-proxmox/patches"
@@ -75,6 +76,8 @@ jobs:
              "${{ steps.vars.outputs.buildFolder }}/usr/share/truenas-proxmox/patches/pvemanagerlib.patch"
           cp plugin-source/pve-docs/api-viewer/apidoc.js.patch \
              "${{ steps.vars.outputs.buildFolder }}/usr/share/truenas-proxmox/patches/apidoc.patch"
+          cp plugin-source/perl5/PVE/Storage/ZFSPlugin.pm.patch \
+             "${{ steps.vars.outputs.buildFolder }}/usr/share/truenas-proxmox/patches/ZFSPlugin.pm.patch"
 
       - name: Update DEBIAN/control version
         shell: bash
@@ -112,3 +115,4 @@ jobs:
           distro: debian
           release: ${{ env.DEB_DISTRO_VERSION }}
           file: "${{ env.DEB_PACKAGE_NAME }}_${{ steps.vars.outputs.debVersion }}_all.deb"
+```
