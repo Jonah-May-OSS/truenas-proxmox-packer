@@ -21,8 +21,8 @@ fi
 
 # Determine library path (only Proxmox 7 uses pve-7 subdir)
 case "$MAJOR_VER" in
-  7) LIB_PATH="/usr/share/pve-7" ;;  
-  *) LIB_PATH="/usr/share"      ;;  
+  7) LIB_PATH="/usr/share/pve-7" ;;
+  *) LIB_PATH="/usr/share"      ;;
 esac
 
 # Define file paths for UI and storage plugin
@@ -37,38 +37,52 @@ PATCH_DIR="/usr/share/truenas-proxmox/patches"
 
 echo "Running TrueNAS-Proxmox post-install script..."
 
-# Display detected Proxmox version info
-if [ "$_DEBUG" = "on" ]; then
-  echo "Proxmox Version: $PVE_VERSION"
-  echo "Proxmox Major Version: $MAJOR_VER"
-fi
-
 # Backup original files before patching
 if [ "$_DEBUG" = "on" ]; then
   echo "Backing up original UI and storage files..."
 fi
-for orig in "$PVEMANAGER_FILEPATH" "$APIDOC_FILEPATH" "$ZFSPLUGIN_FILEPATH"; do
+for orig in \
+     "$PVEMANAGER_FILEPATH" \
+     "$APIDOC_FILEPATH" \
+     "$ZFSPLUGIN_FILEPATH" \
+; do
   if [ -f "$orig" ] && [ ! -f "${orig}.orig" ]; then
     echo "Backing up $orig to ${orig}.orig"
-    cp "$orig" "${orig}.orig"
+    cp -a "$orig" "${orig}.orig"
   fi
 done
 
-# Apply GUI patches if available
+# Apply GUI & storage plugin patches if available
 if [ -d "$PATCH_DIR" ]; then
-  echo "Applying GUI patches..."
+  echo "Applying GUI/storage patches..."
+
   if [ -f "$PATCH_DIR/pvemanagerlib.patch" ]; then
-    patch "$PVEMANAGER_FILEPATH" < "$PATCH_DIR/pvemanagerlib.patch" || echo "(pvemanagerlib patch failed)"
+    patch --forward "$PVEMANAGER_FILEPATH" < "$PATCH_DIR/pvemanagerlib.patch" \
+      || echo "(pvemanagerlib patch failed)"
   fi
+
   if [ -f "$PATCH_DIR/apidoc.patch" ]; then
-    patch "$APIDOC_FILEPATH" < "$PATCH_DIR/apidoc.patch" || echo "(apidoc patch failed)"
+    patch --forward "$APIDOC_FILEPATH" < "$PATCH_DIR/apidoc.patch" \
+      || echo "(apidoc patch failed)"
+  fi
+
+  # *** New: apply ZFSPlugin.pm.patch ***
+  if [ -f "$PATCH_DIR/ZFSPlugin.pm.patch" ]; then
+    patch --forward "$ZFSPLUGIN_FILEPATH" < "$PATCH_DIR/ZFSPlugin.pm.patch" \
+      || echo "(ZFSPlugin.pm patch failed)"
   fi
 fi
 
 # Verify required files after install
 echo "Verifying required files after install..."
 missing=0
-for file in "$PVEMANAGER_FILEPATH" "$APIDOC_FILEPATH" "$ZFSPLUGIN_FILEPATH" "$TRUENAS_PLUGIN_FILEPATH" "$REST_CLIENT_FILEPATH"; do
+for file in \
+     "$PVEMANAGER_FILEPATH" \
+     "$APIDOC_FILEPATH" \
+     "$ZFSPLUGIN_FILEPATH" \
+     "$TRUENAS_PLUGIN_FILEPATH" \
+     "$REST_CLIENT_FILEPATH" \
+; do
   if [ ! -f "$file" ]; then
     echo "ERROR: Required file missing: $file"
     missing=1
@@ -84,9 +98,9 @@ echo "All required files are present."
 
 # Reload Proxmox services
 echo "Reloading Proxmox services (best effort)..."
-systemctl reload-or-restart pvedaemon.service  || true
-systemctl reload-or-restart pveproxy.service   || true
-systemctl reload-or-restart pvestatd.service   || true
+systemctl reload-or-restart pvedaemon.service    || true
+systemctl reload-or-restart pveproxy.service     || true
+systemctl reload-or-restart pvestatd.service     || true
 systemctl reload-or-restart pvescheduler.service || true
 
 echo "TrueNAS-Proxmox integration successfully installed."
