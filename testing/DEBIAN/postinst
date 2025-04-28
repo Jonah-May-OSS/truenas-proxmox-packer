@@ -29,9 +29,12 @@ proxmox_ve_ver=`dpkg-query --showformat='${Version}' --show proxmox-ve`
 libpve_storage_perl_ver=`dpkg-query --showformat='${Version}' --show libpve-storage-perl`
 pve_manager_ver=`dpkg-query --showformat='${Version}' --show pve-manager`
 pve_docs_ver=`dpkg-query --showformat='${Version}' --show pve-docs`
-major_ver=${proxmox_ve_ver%%.*}
+major_ver=${proxmox_ve_ver%%.*}  # Extract major version
 [ "${_DEBUG}" == "on" ] && echo "Proxmox Version $proxmox_ve_ver"
 [ "${_DEBUG}" == "on" ] && echo "Proxmox Major Version $major_ver"
+
+# Use the dynamic major version in place of hardcoded stable-8
+STABLE_BRANCH="stable-${major_ver}"
 
 # Test if the truenas-proxmox repo has been downloaded. If not clone it, else
 # update the repo with a pull.
@@ -46,7 +49,6 @@ git -C ${GIT_LOCAL_REPO_PATH} clone ${GIT_REPO}${GIT_REPO_NAME}.git
 [ "$_DEBUG" == "on" ] && echo "Initiating '$1' with arg '$2'"
 case "$1" in
   triggered)
-    # I am not sure why I did this, but I must have had a reason.
     if [ `echo $2 | grep -c "apidoc"` -eq 0 ] && [ `cat ${LIB_PATH}${APIDOC_FILEPATH} | grep -c "truenas"` -eq 0 ]; then
       [ "${_DEBUG}" == "on" ] && echo "Update needed for pve-docs"
       paths="$2 ${APIDOC_FILEPATH}"
@@ -82,14 +84,11 @@ case "$1" in
     ;;
 
   configure)
-    # Configure this package.  If the package must prompt the user for
-    # information, do it here.
     echo "Configuring ${GIT_REPO_NAME} $2"
 
-    # Check to see what branch we are on and change if necessary.
     GIT_BRANCH_CURRENT=`git -C ${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME} rev-parse --abbrev-ref HEAD`
-    if [ "${GIT_BRANCH_CURRENT}" != "${GIT_BRANCH}" ]; then
-      git -C ${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME} checkout ${GIT_BRANCH}
+    if [ "${GIT_BRANCH_CURRENT}" != "${STABLE_BRANCH}" ]; then
+      git -C ${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME} checkout ${STABLE_BRANCH}
     fi
 
     # Check to see if the system was already patched manually or by another means.
@@ -147,6 +146,7 @@ case "$1" in
   *) echo "$0: didn't understand being called with \`$1'" 1>&2
      exit 0
      ;;
+
 esac
 
 exit 0
