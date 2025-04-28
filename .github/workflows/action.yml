@@ -59,6 +59,13 @@ jobs:
           set -euo pipefail
           rsync -a plugin-source/ "${{ steps.vars.outputs.buildFolder }}/"
 
+      - name: Copy LunCmd plugin module
+        shell: bash
+        run: |
+          mkdir -p "${{ steps.vars.outputs.buildFolder }}/usr/share/perl5/PVE/Storage/LunCmd"
+          cp plugin-source/perl5/PVE/Storage/LunCmd/TrueNAS.pm \
+             "${{ steps.vars.outputs.buildFolder }}/usr/share/perl5/PVE/Storage/LunCmd/"
+
       - name: Update DEBIAN/control version
         shell: bash
         run: |
