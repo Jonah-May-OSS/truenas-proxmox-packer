@@ -19,7 +19,8 @@ jobs:
         with:
           repository: ${{ env.PACKER_REPO }}
 
-      - name: Set environment variables
+      - name: Set environment variables and determine version
+        id: vars
         shell: bash
         run: |
           REF="${{ github.event.client_payload.ref }}"
@@ -32,7 +33,7 @@ jobs:
             REPO_NAME="truenas-proxmox-snapshots"
           elif [[ "$BRANCH" == master ]]; then
             FOLDER="testing"
-            VERSION="3.0.0-beta2"
+            VERSION="3.0.0-beta1"
             REPO_NAME="truenas-proxmox-testing"
           elif [[ "$BRANCH" =~ ^(v?3\.0|3\.0.*)$ ]]; then
             FOLDER="stable"
@@ -42,9 +43,9 @@ jobs:
             echo "ERROR: Unknown branch '$BRANCH'" >&2
             exit 1
           fi
-          echo "buildFolder=$FOLDER" >> $GITHUB_ENV
-          echo "DEB_PACKAGE_VERSION=$VERSION" >> $GITHUB_ENV
-          echo "ARTIFACT_REPO_NAME=$REPO_NAME" >> $GITHUB_ENV
+          echo ::set-output name=buildFolder::$FOLDER
+          echo ::set-output name=debVersion::$VERSION
+          echo ::set-output name=artifactRepo::$REPO_NAME
 
       - name: Checkout plugin source
         uses: actions/checkout@v4
@@ -56,40 +57,24 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          rsync -a plugin-source/ "${{ env.buildFolder }}/"
+          rsync -a plugin-source/ "${{ steps.vars.outputs.buildFolder }}/"
 
-      - name: Fix permissions on DEBIAN metadata and scripts
+      - name: Inject version into DEBIAN/control
         shell: bash
         run: |
-          chmod -R 0755 "${{ env.buildFolder }}/DEBIAN"
-
-      - name: Strip source stanza from control
-        shell: bash
-        run: |
-          CONTROL="${{ env.buildFolder }}/DEBIAN/control"
+          CONTROL="${{ steps.vars.outputs.buildFolder }}/DEBIAN/control"
           if [ ! -f "$CONTROL" ]; then
             echo "ERROR: control file not found at $CONTROL" >&2
             exit 1
           fi
-          LINE=$(grep -n '^Package:' "$CONTROL" | cut -d: -f1)
-          tail -n +"$LINE" "$CONTROL" > "${CONTROL}.tmp"
-          mv "${CONTROL}.tmp" "$CONTROL"
-
-      - name: Update DEBIAN/control Version
-        shell: bash
-        run: |
-          CONTROL_FILE="${{ env.buildFolder }}/DEBIAN/control"
-          if [ ! -f "$CONTROL_FILE" ]; then
-            echo "ERROR: control file not found at $CONTROL_FILE" >&2
-            exit 1
-          fi
-          sed -i "s/^Version:.*/Version: ${{ env.DEB_PACKAGE_VERSION }}/" "$CONTROL_FILE"
+          # Replace the Version line with our computed version
+          sed -i "s/^Version:.*/Version: ${{ steps.vars.outputs.debVersion }}/" "$CONTROL"
 
       - name: Build Debian package
         shell: bash
         run: |
-          dpkg-deb -Zgzip --build "${{ env.buildFolder }}" \
-            "${{ env.DEB_PACKAGE_NAME }}_${{ env.DEB_PACKAGE_VERSION }}_all.deb"
+          dpkg-deb -Zgzip --build "${{ steps.vars.outputs.buildFolder }}" \
+            "${{ env.DEB_PACKAGE_NAME }}_${{ steps.vars.outputs.debVersion }}_all.deb"
 
       - name: Push to Cloudsmith
         uses: cloudsmith-io/action@master
@@ -97,8 +82,8 @@ jobs:
           api-key: ${{ secrets.CLOUDSMITH_API_KEY }}
           command: push
           format: deb
-          owner: jonah-may-oss
-          repo: ${{ env.ARTIFACT_REPO_NAME }}
+          owner: ksatechnologies
+          repo: ${{ steps.vars.outputs.artifactRepo }}
           distro: debian
           release: ${{ env.DEB_DISTRO_VERSION }}
-          file: "${{ env.DEB_PACKAGE_NAME }}_${{ env.DEB_PACKAGE_VERSION }}_all.deb"
+          file: "${{ env.DEB_PACKAGE_NAME }}_${{ steps.vars.outputs.debVersion }}_all.deb"
