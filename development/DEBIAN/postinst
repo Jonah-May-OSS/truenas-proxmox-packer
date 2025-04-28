@@ -10,11 +10,11 @@ LIB_PATH="/usr/share"
 PVEMANAGER_FILEPATH="/pve-manager/js/pvemanagerlib.js"
 ZFSPLUGIN_FILEPATH="/perl5/PVE/Storage/ZFSPlugin.pm"
 APIDOC_FILEPATH="/pve-docs/api-viewer/apidoc.js"
-FREENAS_FILEPATH="/perl5/PVE/Storage/LunCmd/FreeNAS.pm"
+FREENAS_FILEPATH="/perl5/PVE/Storage/LunCmd/TrueNAS.pm"
 REST_CLIENT_FILEPATH="/perl5/REST/Client.pm"
-GIT_REPO="https://github.com/TheGrandWazoo/"
+GIT_REPO="https://github.com/Jonah-May-OSS"
 GIT_LOCAL_REPO_PATH="/usr/local/src/"
-GIT_REPO_NAME="freenas-proxmox"
+GIT_REPO_NAME="truenas-proxmox"
 GIT_BRANCH="master"
 RESTART_PVE_SERVICES="no"
 
@@ -33,13 +33,13 @@ major_ver=${proxmox_ve_ver%%.*}
 [ "${_DEBUG}" == "on" ] && echo "Proxmox Version $proxmox_ve_ver"
 [ "${_DEBUG}" == "on" ] && echo "Proxmox Major Version $major_ver"
 
-# Test if the freenas-proxmox repo has been downloaded. If not clone it, else
+# Test if the truenas-proxmox repo has been downloaded. If not clone it, else
 # update the repo with a pull.
 if test ! -e ${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME}; then
-  [ "${_DEBUG}" == "on" ] && echo "Cloning proxmox-freenas github repo"
+  [ "${_DEBUG}" == "on" ] && echo "Cloning proxmox-truenas github repo"
   git -C ${GIT_LOCAL_REPO_PATH} clone ${GIT_REPO}${GIT_REPO_NAME}.git
 else
-  [ "${_DEBUG}" == "on" ] && echo "Pulling proxmox-freenas github repo"
+  [ "${_DEBUG}" == "on" ] && echo "Pulling proxmox-truenas github repo"
   git -C ${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME} pull
 fi
 
@@ -48,7 +48,7 @@ fi
 case "$1" in
   triggered)
     # I am not sure why I did this, but I must have had a reason.
-    if [ `echo $2 | grep -c "apidoc"` -eq 0 ] && [ `cat ${LIB_PATH}${APIDOC_FILEPATH} | grep -c "freenas"` -eq 0 ]; then
+    if [ `echo $2 | grep -c "apidoc"` -eq 0 ] && [ `cat ${LIB_PATH}${APIDOC_FILEPATH} | grep -c "truenas"` -eq 0 ]; then
       [ "${_DEBUG}" == "on" ] && echo "Update needed for pve-docs"
       paths="$2 ${APIDOC_FILEPATH}"
     else
@@ -94,22 +94,22 @@ case "$1" in
     fi
 
     # Check to see if the system was already patched manually or by another means.
-    # Check /usr/share/perl5/PVE/Storage/ZFSPlugin.pm for 'freenas'
-    if [ `cat ${LIB_PATH}${ZFSPLUGIN_FILEPATH} | grep -c "freenas"` -eq 0 ]; then
+    # Check /usr/share/perl5/PVE/Storage/ZFSPlugin.pm for 'truenas'
+    if [ `cat ${LIB_PATH}${ZFSPLUGIN_FILEPATH} | grep -c "truenas"` -eq 0 ]; then
       [ "${_DEBUG}" == "on" ] && echo "Patching ${LIB_PATH}${ZFSPLUGIN_FILEPATH}"
       patch ${PATCH_ARGS} ${LIB_PATH}${ZFSPLUGIN_FILEPATH} < ${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME}${ZFSPLUGIN_FILEPATH}.patch &> /dev/null
       RESTART_PVE_SERVICES="yes"
     fi
 
-    # Check /usr/share/pve-manager/js/pvemanagerlib.js for 'freenas'
-    if [ `cat ${LIB_PATH}${PVEMANAGER_FILEPATH} | grep -c "freenas"` -eq 0 ]; then
+    # Check /usr/share/pve-manager/js/pvemanagerlib.js for 'truenas'
+    if [ `cat ${LIB_PATH}${PVEMANAGER_FILEPATH} | grep -c "truenas"` -eq 0 ]; then
       [ "${_DEBUG}" == "on" ] && echo "Patching ${LIB_PATH}${PVEMANAGER_FILEPATH}"
       patch ${PATCH_ARGS} ${LIB_PATH}${PVEMANAGER_FILEPATH} < ${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME}${PVEMANAGER_FILEPATH}.patch &> /dev/null
       RESTART_PVE_SERVICES="yes"
     fi
 
-    # Check /usr/share/pve-docs/api-viewer/apidoc.js for 'freenas'
-    if [ `cat ${LIB_PATH}${APIDOC_FILEPATH} | grep -c "freenas"` -eq 0 ]; then
+    # Check /usr/share/pve-docs/api-viewer/apidoc.js for 'truenas'
+    if [ `cat ${LIB_PATH}${APIDOC_FILEPATH} | grep -c "truenas"` -eq 0 ]; then
       [ "${_DEBUG}" == "on" ] && echo "Patching ${LIB_PATH}${APIDOC_FILEPATH}"
       patch ${PATCH_ARGS} ${LIB_PATH}${APIDOC_FILEPATH} < ${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME}${APIDOC_FILEPATH}.patch &> /dev/null
       RESTART_PVE_SERVICES="yes"
