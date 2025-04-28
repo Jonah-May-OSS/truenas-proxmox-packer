@@ -43,9 +43,10 @@ jobs:
             echo "ERROR: Unknown branch '$BRANCH'" >&2
             exit 1
           fi
-          echo "::set-output name=buildFolder::$FOLDER"
-          echo "::set-output name=debVersion::$VERSION"
-          echo "::set-output name=artifactRepo::$REPO_NAME"
+          # Use environment file instead of deprecated set-output
+          echo "buildFolder=$FOLDER" >> "$GITHUB_OUTPUT"
+          echo "debVersion=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "artifactRepo=$REPO_NAME" >> "$GITHUB_OUTPUT"
 
       - name: Checkout plugin source
         uses: actions/checkout@v4
