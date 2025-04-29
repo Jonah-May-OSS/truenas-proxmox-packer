@@ -66,9 +66,8 @@ if [ -d "$PATCH_DIR" ]; then
       || echo "(apidoc patch failed)"
   fi
 
-  # *** New: apply ZFSPlugin.pm.patch ***
   if [ -f "$PATCH_DIR/ZFSPlugin.pm.patch" ]; then
-    patch --forward "$ZFSPLUGIN_FILEPATH" < "$PATCH_DIR/ZFSPlugin.pm.patch" \
+    patch --forward -p1 "$ZFSPLUGIN_FILEPATH" < "$PATCH_DIR/ZFSPlugin.pm.patch" \
       || echo "(ZFSPlugin.pm patch failed)"
   fi
 fi
