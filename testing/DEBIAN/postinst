@@ -25,62 +25,67 @@ case "$MAJOR_VER" in
   *) LIB_PATH="/usr/share"      ;;
 esac
 
-# Define file paths for UI and storage plugin
+# Define file paths
 PVEMANAGER_FILEPATH="$LIB_PATH/pve-manager/js/pvemanagerlib.js"
 APIDOC_FILEPATH="$LIB_PATH/pve-docs/api-viewer/apidoc.js"
 ZFSPLUGIN_FILEPATH="$LIB_PATH/perl5/PVE/Storage/ZFSPlugin.pm"
 TRUENAS_PLUGIN_FILEPATH="$LIB_PATH/perl5/PVE/Storage/LunCmd/TrueNAS.pm"
 REST_CLIENT_FILEPATH="$LIB_PATH/perl5/REST/Client.pm"
 
-# Directory inside the .deb where patch files live
+# Where our patch files live inside the .deb
 PATCH_DIR="/usr/share/truenas-proxmox/patches"
 
 echo "Running TrueNAS-Proxmox post-install script..."
 
-# Backup original files before patching
+# 1) Backup originals
 if [ "$_DEBUG" = "on" ]; then
-  echo "Backing up original UI and storage files..."
+  echo "Backing up original files..."
 fi
 for orig in \
-     "$PVEMANAGER_FILEPATH" \
-     "$APIDOC_FILEPATH" \
-     "$ZFSPLUGIN_FILEPATH" \
+  "$PVEMANAGER_FILEPATH" \
+  "$APIDOC_FILEPATH" \
+  "$ZFSPLUGIN_FILEPATH" \
 ; do
   if [ -f "$orig" ] && [ ! -f "${orig}.orig" ]; then
-    echo "Backing up $orig to ${orig}.orig"
+    echo "Backing up $orig → ${orig}.orig"
     cp -a "$orig" "${orig}.orig"
   fi
 done
 
-# Apply GUI & storage plugin patches if available
+# 2) Apply GUI patches (pvemanagerlib & apidoc)
 if [ -d "$PATCH_DIR" ]; then
-  echo "Applying GUI/storage patches..."
-
+  echo "Applying GUI patches…"
   if [ -f "$PATCH_DIR/pvemanagerlib.patch" ]; then
     patch --forward "$PVEMANAGER_FILEPATH" < "$PATCH_DIR/pvemanagerlib.patch" \
       || echo "(pvemanagerlib patch failed)"
   fi
-
   if [ -f "$PATCH_DIR/apidoc.patch" ]; then
     patch --forward "$APIDOC_FILEPATH" < "$PATCH_DIR/apidoc.patch" \
       || echo "(apidoc patch failed)"
   fi
-
-  if [ -f "$PATCH_DIR/ZFSPlugin.pm.patch" ]; then
-    patch --forward -p1 "$ZFSPLUGIN_FILEPATH" < "$PATCH_DIR/ZFSPlugin.pm.patch" \
-      || echo "(ZFSPlugin.pm patch failed)"
-  fi
 fi
 
-# Verify required files after install
-echo "Verifying required files after install..."
+# 3) Inject our TrueNAS fields into ZFSPlugin.pm via sed
+if ! grep -q "truenas_user" "$ZFSPLUGIN_FILEPATH"; then
+  echo "Injecting TrueNAS API fields into ZFSPlugin.pm…"
+  sed -i '/iscsiprovider => {/a \
+        truenas_user       => { description => "TrueNAS API Username",      type => '\''string'\'',  optional => 1 },\
+        truenas_secret     => { description => "TrueNAS API Password/Token", type => '\''string'\'',  format => '\''password'\'', optional => 1 },\
+        truenas_token_auth => { description => "Use token (Bearer) auth",   type => '\''boolean'\'', default => 0,             optional => 1 },\
+        truenas_use_ssl    => { description => "Connect via HTTPS",         type => '\''boolean'\'', default => 1,             optional => 1 },\
+        truenas_apiv4_host => { description => "API host override",         type => '\''string'\'',  optional => 1 },' \
+    "$ZFSPLUGIN_FILEPATH"
+fi
+
+# 4) Verify required files exist
+echo "Verifying required files…"
 missing=0
 for file in \
-     "$PVEMANAGER_FILEPATH" \
-     "$APIDOC_FILEPATH" \
-     "$ZFSPLUGIN_FILEPATH" \
-     "$TRUENAS_PLUGIN_FILEPATH" \
-     "$REST_CLIENT_FILEPATH" \
+  "$PVEMANAGER_FILEPATH" \
+  "$APIDOC_FILEPATH" \
+  "$ZFSPLUGIN_FILEPATH" \
+  "$TRUENAS_PLUGIN_FILEPATH" \
+  "$REST_CLIENT_FILEPATH" \
 ; do
   if [ ! -f "$file" ]; then
     echo "ERROR: Required file missing: $file"
@@ -89,14 +94,14 @@ for file in \
 done
 
 if [ "$missing" -ne 0 ]; then
-  echo "One or more required files are missing. Aborting installation."
+  echo "One or more required files are missing. Aborting."
   exit 1
 fi
 
 echo "All required files are present."
 
-# Reload Proxmox services
-echo "Reloading Proxmox services (best effort)..."
+# 5) Reload Proxmox services (best effort)
+echo "Reloading Proxmox services…"
 systemctl reload-or-restart pvedaemon.service    || true
 systemctl reload-or-restart pveproxy.service     || true
 systemctl reload-or-restart pvestatd.service     || true
