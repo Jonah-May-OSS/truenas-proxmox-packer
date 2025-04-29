@@ -1,74 +1,60 @@
 #!/bin/sh
 # TrueNAS-Proxmox post-install script
-# Abort on any error or unset variable
 set -eu
 
-# Debug toggle
 _DEBUG=${_DEBUG:-on}
 
-# Detect Proxmox version
+# 1) Detect Proxmox version
 if PVE_VERSION=$(dpkg-query --showformat='${Version}' --show pve-manager 2>/dev/null); then :; else PVE_VERSION="unknown"; fi
 MAJOR_VER=${PVE_VERSION%%.*}
-
 [ "$_DEBUG" = "on" ] && echo "Proxmox Version: $PVE_VERSION (Major: $MAJOR_VER)"
 
-# Determine library path
+# 2) Determine library path
 case "$MAJOR_VER" in
   7) LIB_PATH="/usr/share/pve-7" ;;
   *) LIB_PATH="/usr/share"    ;;
 esac
 
-# File paths
+# 3) Define file paths
 PVEMANAGER_FILEPATH="$LIB_PATH/pve-manager/js/pvemanagerlib.js"
 APIDOC_FILEPATH="$LIB_PATH/pve-docs/api-viewer/apidoc.js"
 ZFSPLUGIN_FILEPATH="$LIB_PATH/perl5/PVE/Storage/ZFSPlugin.pm"
 TRUENAS_PLUGIN_FILEPATH="$LIB_PATH/perl5/PVE/Storage/LunCmd/TrueNAS.pm"
 REST_CLIENT_FILEPATH="$LIB_PATH/perl5/REST/Client.pm"
 
-# Directory inside the .deb where GUI patch files might live
+# 4) Patches directory
 PATCH_DIR="/usr/share/truenas-proxmox/patches"
 
-echo "Running TrueNAS-Proxmox post-install script..."
+echo "Running TrueNAS-Proxmox post-install..."
 
-# 1) Backup originals if needed
-[ "$_DEBUG" = "on" ] && echo "Backing up original files..."
+# 5) Backup originals
+[ "$_DEBUG" = "on" ] && echo "Backing up originals..."
 for orig in \
   "$PVEMANAGER_FILEPATH" \
   "$APIDOC_FILEPATH" \
   "$ZFSPLUGIN_FILEPATH" \
 ; do
-  if [ -f "$orig" ] && [ ! -f "${orig}.orig" ]; then
-    echo " - Backing up $orig → ${orig}.orig"
+  [ -f "$orig" ] && [ ! -f "${orig}.orig" ] && {
+    echo " - cp $orig → ${orig}.orig"
     cp -a "$orig" "${orig}.orig"
-  fi
+  }
 done
 
-# 2) Apply existing GUI patches (pvemanagerlib & apidoc)
+# 6) Apply GUI patches
 if [ -d "$PATCH_DIR" ]; then
-  echo "Applying GUI patches…"
-  [ -f "$PATCH_DIR/pvemanagerlib.patch" ] && \
-    patch --forward "$PVEMANAGER_FILEPATH" < "$PATCH_DIR/pvemanagerlib.patch" \
-      || echo "(pvemanagerlib patch failed)"
+  echo "Applying GUI patches..."
+  [ -f "$PATCH_DIR/pvemanagerlib.patch" ] && patch --forward "$PVEMANAGER_FILEPATH" < "$PATCH_DIR/pvemanagerlib.patch" || echo "(pvemanagerlib failed)"
+  [ -f "$PATCH_DIR/apidoc.patch" ]       && patch --forward "$APIDOC_FILEPATH"   < "$PATCH_DIR/apidoc.patch"       || echo "(apidoc failed)"
 
-  [ -f "$PATCH_DIR/apidoc.patch" ] && \
-    patch --forward "$APIDOC_FILEPATH" < "$PATCH_DIR/apidoc.patch" \
-      || echo "(apidoc patch failed)"
+  # 7) Apply ZFSPlugin.pm patch (now without any -pX)
+  if [ -f "$PATCH_DIR/ZFSPlugin.pm.patch" ]; then
+    echo "Applying ZFSPlugin.pm patch..."
+    patch --forward "$ZFSPLUGIN_FILEPATH" < "$PATCH_DIR/ZFSPlugin.pm.patch" || echo "(ZFSPlugin.pm patch failed)"
+  fi
 fi
 
-# 3) Inject TrueNAS API fields into ZFSPlugin.pm if they're not already there
-if ! grep -q "truenas_user" "$ZFSPLUGIN_FILEPATH"; then
-  echo "Injecting TrueNAS API fields into ZFSPlugin.pm…"
-  sed -i "/iscsiprovider *=> *{[[:space:]]*fixed/ a \\
-        truenas_user       => { description => \"TrueNAS API Username\",      type => 'string',      optional => 1 },\\
-        truenas_secret     => { description => \"TrueNAS API Password/Token\", type => 'string',      format => 'password', optional => 1 },\\
-        truenas_token_auth => { description => \"Use token (Bearer) auth\",   type => 'boolean',     default => 0,           optional => 1 },\\
-        truenas_use_ssl    => { description => \"Connect via HTTPS\",         type => 'boolean',     default => 1,           optional => 1 },\\
-        truenas_apiv4_host => { description => \"TrueNAS API host override\", type => 'string',      optional => 1 }" \
-    "$ZFSPLUGIN_FILEPATH"
-fi
-
-# 4) Verify required files exist
-echo "Verifying required files…"
+# 8) Verify required files
+echo "Verifying required files..."
 missing=0
 for file in \
   "$PVEMANAGER_FILEPATH" \
@@ -77,21 +63,21 @@ for file in \
   "$TRUENAS_PLUGIN_FILEPATH" \
   "$REST_CLIENT_FILEPATH" \
 ; do
-  if [ ! -f "$file" ]; then
-    echo "ERROR: Required file missing: $file"
+  [ ! -f "$file" ] && {
+    echo "ERROR: missing $file"
     missing=1
-  fi
+  }
 done
-[ "$missing" -ne 0 ] && { echo "Aborting installation."; exit 1; }
+[ "$missing" -ne 0 ] && { echo "Aborting."; exit 1; }
 
-echo "All required files are present."
+echo "All required files present."
 
-# 5) Reload Proxmox services (best effort)
-echo "Reloading Proxmox services…"
+# 9) Reload services
+echo "Reloading Proxmox services..."
 systemctl reload-or-restart pvedaemon.service    || true
 systemctl reload-or-restart pveproxy.service     || true
 systemctl reload-or-restart pvestatd.service     || true
 systemctl reload-or-restart pvescheduler.service || true
 
-echo "TrueNAS-Proxmox integration successfully installed."
+echo "Installation complete."
 exit 0
