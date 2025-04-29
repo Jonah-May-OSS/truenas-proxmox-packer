@@ -33,7 +33,7 @@ jobs:
             REPO_NAME="truenas-proxmox-snapshots"
           elif [[ "$BRANCH" == master ]]; then
             FOLDER="testing"
-            VERSION="3.0.0-beta2"
+            VERSION="3.0.0-beta3"
             REPO_NAME="truenas-proxmox-testing"
           elif [[ "$BRANCH" =~ ^(v?3\.0|3\.0.*)$ ]]; then
             FOLDER="stable"
