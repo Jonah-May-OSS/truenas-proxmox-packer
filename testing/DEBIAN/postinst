@@ -6,74 +6,64 @@ set -eu
 # Debug toggle
 _DEBUG=${_DEBUG:-on}
 
-# Detect Proxmox version via dpkg-query
-if PVE_VERSION=$(dpkg-query --showformat='${Version}' --show pve-manager 2>/dev/null); then
-  :
-else
-  PVE_VERSION="unknown"
-fi
+# Detect Proxmox version
+if PVE_VERSION=$(dpkg-query --showformat='${Version}' --show pve-manager 2>/dev/null); then :; else PVE_VERSION="unknown"; fi
 MAJOR_VER=${PVE_VERSION%%.*}
 
-if [ "$_DEBUG" = "on" ]; then
-  echo "Proxmox Version: $PVE_VERSION"
-  echo "Proxmox Major Version: $MAJOR_VER"
-fi
+[ "$_DEBUG" = "on" ] && echo "Proxmox Version: $PVE_VERSION (Major: $MAJOR_VER)"
 
-# Determine library path (only Proxmox 7 uses pve-7 subdir)
+# Determine library path
 case "$MAJOR_VER" in
   7) LIB_PATH="/usr/share/pve-7" ;;
-  *) LIB_PATH="/usr/share"      ;;
+  *) LIB_PATH="/usr/share"    ;;
 esac
 
-# Define file paths
+# File paths
 PVEMANAGER_FILEPATH="$LIB_PATH/pve-manager/js/pvemanagerlib.js"
 APIDOC_FILEPATH="$LIB_PATH/pve-docs/api-viewer/apidoc.js"
 ZFSPLUGIN_FILEPATH="$LIB_PATH/perl5/PVE/Storage/ZFSPlugin.pm"
 TRUENAS_PLUGIN_FILEPATH="$LIB_PATH/perl5/PVE/Storage/LunCmd/TrueNAS.pm"
 REST_CLIENT_FILEPATH="$LIB_PATH/perl5/REST/Client.pm"
 
-# Where our patch files live inside the .deb
+# Directory inside the .deb where GUI patch files might live
 PATCH_DIR="/usr/share/truenas-proxmox/patches"
 
 echo "Running TrueNAS-Proxmox post-install script..."
 
-# 1) Backup originals
-if [ "$_DEBUG" = "on" ]; then
-  echo "Backing up original files..."
-fi
+# 1) Backup originals if needed
+[ "$_DEBUG" = "on" ] && echo "Backing up original files..."
 for orig in \
   "$PVEMANAGER_FILEPATH" \
   "$APIDOC_FILEPATH" \
   "$ZFSPLUGIN_FILEPATH" \
 ; do
   if [ -f "$orig" ] && [ ! -f "${orig}.orig" ]; then
-    echo "Backing up $orig → ${orig}.orig"
+    echo " - Backing up $orig → ${orig}.orig"
     cp -a "$orig" "${orig}.orig"
   fi
 done
 
-# 2) Apply GUI patches (pvemanagerlib & apidoc)
+# 2) Apply existing GUI patches (pvemanagerlib & apidoc)
 if [ -d "$PATCH_DIR" ]; then
   echo "Applying GUI patches…"
-  if [ -f "$PATCH_DIR/pvemanagerlib.patch" ]; then
+  [ -f "$PATCH_DIR/pvemanagerlib.patch" ] && \
     patch --forward "$PVEMANAGER_FILEPATH" < "$PATCH_DIR/pvemanagerlib.patch" \
       || echo "(pvemanagerlib patch failed)"
-  fi
-  if [ -f "$PATCH_DIR/apidoc.patch" ]; then
+
+  [ -f "$PATCH_DIR/apidoc.patch" ] && \
     patch --forward "$APIDOC_FILEPATH" < "$PATCH_DIR/apidoc.patch" \
       || echo "(apidoc patch failed)"
-  fi
 fi
 
-# 3) Inject our TrueNAS fields into ZFSPlugin.pm via sed
+# 3) Inject TrueNAS API fields into ZFSPlugin.pm if they're not already there
 if ! grep -q "truenas_user" "$ZFSPLUGIN_FILEPATH"; then
   echo "Injecting TrueNAS API fields into ZFSPlugin.pm…"
-  sed -i '/iscsiprovider => {/a \
-        truenas_user       => { description => "TrueNAS API Username",      type => '\''string'\'',  optional => 1 },\
-        truenas_secret     => { description => "TrueNAS API Password/Token", type => '\''string'\'',  format => '\''password'\'', optional => 1 },\
-        truenas_token_auth => { description => "Use token (Bearer) auth",   type => '\''boolean'\'', default => 0,             optional => 1 },\
-        truenas_use_ssl    => { description => "Connect via HTTPS",         type => '\''boolean'\'', default => 1,             optional => 1 },\
-        truenas_apiv4_host => { description => "API host override",         type => '\''string'\'',  optional => 1 },' \
+  sed -i "/iscsiprovider *=> *{[[:space:]]*fixed/ a \\
+        truenas_user       => { description => \"TrueNAS API Username\",      type => 'string',      optional => 1 },\\
+        truenas_secret     => { description => \"TrueNAS API Password/Token\", type => 'string',      format => 'password', optional => 1 },\\
+        truenas_token_auth => { description => \"Use token (Bearer) auth\",   type => 'boolean',     default => 0,           optional => 1 },\\
+        truenas_use_ssl    => { description => \"Connect via HTTPS\",         type => 'boolean',     default => 1,           optional => 1 },\\
+        truenas_apiv4_host => { description => \"TrueNAS API host override\", type => 'string',      optional => 1 }" \
     "$ZFSPLUGIN_FILEPATH"
 fi
 
@@ -92,11 +82,7 @@ for file in \
     missing=1
   fi
 done
-
-if [ "$missing" -ne 0 ]; then
-  echo "One or more required files are missing. Aborting."
-  exit 1
-fi
+[ "$missing" -ne 0 ] && { echo "Aborting installation."; exit 1; }
 
 echo "All required files are present."
 
