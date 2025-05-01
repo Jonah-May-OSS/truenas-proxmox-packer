@@ -40,21 +40,27 @@ jobs:
           echo "GitHub branch is: $BRANCH"
           echo "GitHub tag is: $TAG"
 
-          # Determine if it's a release or beta tag
-          if [[ "$TAG" =~ ^Release ]]; then
-            FOLDER="stable"
-            VERSION="${TAG#Release }"
-            REPO_NAME="truenas-proxmox"
-          elif [[ "$TAG" =~ ^Beta ]]; then
-            FOLDER="testing"
-            VERSION="${TAG#Beta }"
-            REPO_NAME="truenas-proxmox-testing"
+          # Handle if it's a tag
+          if [[ -n "$TAG" ]]; then
+            if [[ "$TAG" =~ ^Release ]]; then
+              FOLDER="stable"
+              VERSION="${TAG#Release }"
+              REPO_NAME="truenas-proxmox"
+            elif [[ "$TAG" =~ ^Beta ]]; then
+              FOLDER="testing"
+              VERSION="${TAG#Beta }"
+              REPO_NAME="truenas-proxmox-testing"
+            else
+              echo "ERROR: Unknown tag format '$TAG'" >&2
+              exit 1
+            fi
+          # Handle if it's a merge to main
           elif [[ "$BRANCH" == "main" ]]; then
             FOLDER="development"
             VERSION=$(date +'%Y%m%d%H%M%S')
             REPO_NAME="truenas-proxmox-development"
           else
-            echo "ERROR: Unknown branch or tag '$BRANCH'" >&2
+            echo "ERROR: Unknown branch '$BRANCH'" >&2
             exit 1
           fi
 
