@@ -1,153 +1,141 @@
-#!/bin/bash
-# Abort if any command returns an error value
-set -e
+#!/bin/sh
+# TrueNAS-Proxmox post-install script
+set -eu
 
-# Debug variable - Values "on" or "off"
-_DEBUG="on"
+_DEBUG=${_DEBUG:-on}
 
-# Setup some variables so we are not duping the paths
-LIB_PATH="/usr/share"
-PVEMANAGER_FILEPATH="/pve-manager/js/pvemanagerlib.js"
-ZFSPLUGIN_FILEPATH="/perl5/PVE/Storage/ZFSPlugin.pm"
-APIDOC_FILEPATH="/pve-docs/api-viewer/apidoc.js"
-FREENAS_FILEPATH="/perl5/PVE/Storage/LunCmd/TrueNAS.pm"
-REST_CLIENT_FILEPATH="/perl5/REST/Client.pm"
-GIT_REPO="https://github.com/Jonah-May-OSS/"
-GIT_LOCAL_REPO_PATH="/usr/local/src/"
-GIT_REPO_NAME="truenas-proxmox"
-GIT_BRANCH="master"
-RESTART_PVE_SERVICES="no"
+# 1) Detect Proxmox version
+if PVE_VERSION=$(dpkg-query --showformat='${Version}' --show pve-manager 2>/dev/null); then :; else PVE_VERSION="unknown"; fi
+MAJOR_VER=${PVE_VERSION%%.*}
+[ "$_DEBUG" = "on" ] && echo "Proxmox Version: $PVE_VERSION (Major: $MAJOR_VER)"
 
-# This script is called as the last step of the installation of the
-# package.  All the package's files are in place, dpkg has already
-# done its automatic conffile handling, and all the packages we depend
-# of are already fully installed and configured.
-[ "${_DEBUG}" == "on" ] && PATCH_ARGS="--verbose -b --ignore-whitespace" || PATCH_ARGS="-s -b --ignore-whitespace"
-
-# Get some version numbers of the Proxmox packages
-proxmox_ve_ver=`dpkg-query --showformat='${Version}' --show proxmox-ve`
-libpve_storage_perl_ver=`dpkg-query --showformat='${Version}' --show libpve-storage-perl`
-pve_manager_ver=`dpkg-query --showformat='${Version}' --show pve-manager`
-pve_docs_ver=`dpkg-query --showformat='${Version}' --show pve-docs`
-major_ver=${proxmox_ve_ver%%.*}
-[ "${_DEBUG}" == "on" ] && echo "Proxmox Version $proxmox_ve_ver"
-[ "${_DEBUG}" == "on" ] && echo "Proxmox Major Version $major_ver"
-
-# Test if the truenas-proxmox repo has been downloaded. If not clone it, else
-# update the repo with a pull.
-if test ! -e ${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME}; then
-  [ "${_DEBUG}" == "on" ] && echo "Cloning proxmox-truenas github repo"
-  git -C ${GIT_LOCAL_REPO_PATH} clone ${GIT_REPO}${GIT_REPO_NAME}.git
-else
-  [ "${_DEBUG}" == "on" ] && echo "Pulling proxmox-truenas github repo"
-  git -C ${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME} pull
-fi
-
-# What is the 'postinst' script doing...
-[ "$_DEBUG" == "on" ] && echo "Initiating '$1' with arg '$2'"
-case "$1" in
-  triggered)
-    # I am not sure why I did this, but I must have had a reason.
-    if [ `echo $2 | grep -c "apidoc"` -eq 0 ] && [ `cat ${LIB_PATH}${APIDOC_FILEPATH} | grep -c "truenas"` -eq 0 ]; then
-      [ "${_DEBUG}" == "on" ] && echo "Update needed for pve-docs"
-      paths="$2 ${APIDOC_FILEPATH}"
-    else
-      [ "${_DEBUG}" == "on" ] && echo "pve-docs check"
-      paths="$2"
-    fi
-
-    for fullpath in $paths
-    do
-      filename=$(basename -- "$fullpath")
-      filename="${filename%.*}"
-      echo "Found $fullpath in arguments. Triggering patch of $fullpath"
-      case "$filename" in
-        ZFSPlugin)
-          patch ${PATCH_ARGS} ${LIB_PATH}${ZFSPLUGIN_FILEPATH} < ${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME}${ZFSPLUGIN_FILEPATH}.patch &> /dev/null
-          ;;
-        pvemanagerlib)
-          patch ${PATCH_ARGS} ${LIB_PATH}${PVEMANAGER_FILEPATH} < ${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME}${PVEMANAGER_FILEPATH}.patch &> /dev/null
-          ;;
-        apidoc)
-          patch ${PATCH_ARGS} ${LIB_PATH}${APIDOC_FILEPATH} < ${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME}${APIDOC_FILEPATH}.patch &> /dev/null
-          ;;
-      esac
-    done
-    [ "${_DEBUG}" == "on" ] && echo "Installing ${LIB_PATH}${FREENAS_FILEPATH}"
-    cp ${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME}${FREENAS_FILEPATH} ${LIB_PATH}${FREENAS_FILEPATH}
-
-    [ "${_DEBUG}" == "on" ] && echo "Installing ${LIB_PATH}${REST_CLIENT_FILEPATH}"
-    cp ${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME}${REST_CLIENT_FILEPATH} ${LIB_PATH}${REST_CLIENT_FILEPATH}
-
-    exit 0
-    ;;
-
-  configure)
-    # Configure this package.  If the package must prompt the user for
-    # information, do it here.
-    echo "Configuring ${GIT_REPO_NAME} $2"
-
-    # Check to see what branch we are on and change if necessary.
-    GIT_BRANCH_CURRENT=`git -C ${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME} rev-parse --abbrev-ref HEAD`
-    if [ "${GIT_BRANCH_CURRENT}" != "${GIT_BRANCH}" ]; then
-      git -C ${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME} checkout ${GIT_BRANCH}
-    fi
-
-    # Check to see if the system was already patched manually or by another means.
-    # Check /usr/share/perl5/PVE/Storage/ZFSPlugin.pm for 'truenas'
-    if [ `cat ${LIB_PATH}${ZFSPLUGIN_FILEPATH} | grep -c "truenas"` -eq 0 ]; then
-      [ "${_DEBUG}" == "on" ] && echo "Patching ${LIB_PATH}${ZFSPLUGIN_FILEPATH}"
-      patch ${PATCH_ARGS} ${LIB_PATH}${ZFSPLUGIN_FILEPATH} < ${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME}${ZFSPLUGIN_FILEPATH}.patch &> /dev/null
-      RESTART_PVE_SERVICES="yes"
-    fi
-
-    # Check /usr/share/pve-manager/js/pvemanagerlib.js for 'truenas'
-    if [ `cat ${LIB_PATH}${PVEMANAGER_FILEPATH} | grep -c "truenas"` -eq 0 ]; then
-      [ "${_DEBUG}" == "on" ] && echo "Patching ${LIB_PATH}${PVEMANAGER_FILEPATH}"
-      patch ${PATCH_ARGS} ${LIB_PATH}${PVEMANAGER_FILEPATH} < ${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME}${PVEMANAGER_FILEPATH}.patch &> /dev/null
-      RESTART_PVE_SERVICES="yes"
-    fi
-
-    # Check /usr/share/pve-docs/api-viewer/apidoc.js for 'truenas'
-    if [ `cat ${LIB_PATH}${APIDOC_FILEPATH} | grep -c "truenas"` -eq 0 ]; then
-      [ "${_DEBUG}" == "on" ] && echo "Patching ${LIB_PATH}${APIDOC_FILEPATH}"
-      patch ${PATCH_ARGS} ${LIB_PATH}${APIDOC_FILEPATH} < ${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME}${APIDOC_FILEPATH}.patch &> /dev/null
-      RESTART_PVE_SERVICES="yes"
-    fi
-
-    # Check /usr/share/perl5/PVE/Storage/LunCmd/FreeNAS.pm
-    if test ! -e ${LIB_PATH}${FREENAS_FILEPATH}; then
-      [ "${_DEBUG}" == "on" ] && echo "Installing ${LIB_PATH}${FREENAS_FILEPATH}"
-      cp ${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME}${FREENAS_FILEPATH} ${LIB_PATH}${FREENAS_FILEPATH}
-      RESTART_PVE_SERVICES="yes"
-    fi
-
-    cp ${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME}${REST_CLIENT_FILEPATH} ${LIB_PATH}${REST_CLIENT_FILEPATH}
-    RESTART_PVE_SERVICES="yes"
-
-    # Restart the necessary Proxmox VE Services if we changed any files above.
-    if [ "${RESTART_PVE_SERVICES}" == "yes" ]; then
-      cp ${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME}${FREENAS_FILEPATH} ${LIB_PATH}${FREENAS_FILEPATH}
-      cp ${GIT_LOCAL_REPO_PATH}${GIT_REPO_NAME}${REST_CLIENT_FILEPATH} ${LIB_PATH}${REST_CLIENT_FILEPATH}
-
-      echo "Restarting pvedaemon..."
-      pvedaemon restart
-      echo "Restarting pveproxy..."
-      pveproxy restart
-      echo "Restarting pvestatd..."
-      pvestatd restart
-      echo "Restarting pvescheduler..."
-      systemctl restart pvescheduler.service
-    fi
-    exit 0
-    ;;
-
-  abort-upgrade|abort-remove|abort-deconfigure)
-    ;;
-
-  *) echo "$0: didn't understand being called with \`$1'" 1>&2
-     exit 0
-     ;;
+# 2) Determine library path
+case "$MAJOR_VER" in
+  7) LIB_PATH="/usr/share/pve-7" ;;
+  *) LIB_PATH="/usr/share" ;;
 esac
 
+# 3) Define file paths
+PVEMANAGER_FILEPATH="$LIB_PATH/pve-manager/js/pvemanagerlib.js"
+ZFSPLUGIN_FILEPATH="$LIB_PATH/perl5/PVE/Storage/ZFSPlugin.pm"
+TRUENAS_PLUGIN_FILEPATH="$LIB_PATH/perl5/PVE/Storage/LunCmd/TrueNAS.pm"
+
+echo "Running TrueNAS-Proxmox post-install..."
+
+# 4) Backup originals
+[ "$_DEBUG" = "on" ] && echo "Backing up originals..."
+for orig in \
+  "$PVEMANAGER_FILEPATH" \
+  "$ZFSPLUGIN_FILEPATH"; do
+  [ -f "$orig" ] && [ ! -f "${orig}.orig" ] && {
+    echo " - cp $orig → ${orig}.orig"
+    cp -a "$orig" "${orig}.orig"
+  }
+done
+
+# 5) Apply GUI tweaks via sed
+
+## 5.1 pvemanagerlib.js
+if [ -f "$PVEMANAGER_FILEPATH" ]; then
+  echo "Applying TrueNAS GUI sed tweaks to pvemanagerlib.js..."
+  sed -i \
+    -e "/\['comstar', 'Comstar'\]/a \\
+        ['truenas', 'TrueNAS']," \
+    "$PVEMANAGER_FILEPATH"
+
+  sed -i \
+    -e "/isComstar: *true,/a \\
+            isTrueNAS: false,\\
+            isLIO: false," \
+    "$PVEMANAGER_FILEPATH"
+
+  sed -i \
+    -e "/vm.set('isComstar',/a \\
+            vm.set('isTrueNAS', newVal === 'truenas');" \
+    "$PVEMANAGER_FILEPATH"
+
+  sed -i \
+    -e "s/vm\\.set('hasWriteCacheOption'.*/vm.set('hasWriteCacheOption', newVal === 'comstar' || newVal === 'truenas' || newVal === 'istgt');/" \
+    "$PVEMANAGER_FILEPATH"
+else
+  echo "WARNING: $PVEMANAGER_FILEPATH not found, skipping GUI sed tweaks."
+fi
+
+## 5.2 ZFSPlugin.pm
+if [ -f "$ZFSPLUGIN_FILEPATH" ]; then
+  echo "Applying TrueNAS sed tweaks to ZFSPlugin.pm..."
+  sed -i \
+    -e "/use PVE::Storage::LunCmd::Comstar;/a \
+use PVE::Storage::LunCmd::TrueNAS;" \
+    -e "/list_view   => 1,/a \\
+    list_extent => 1," \
+    -e "s/Available \[comstar, istgt, iet, LIO\]/Available [comstar, truenas, istgt, iet, LIO]/g" \
+    -e "/return PVE::Storage::LunCmd::Comstar::get_base;/a \\
+    } elsif (\$scfg\->{iscsiprovider} eq 'truenas') { \\
+        return PVE::Storage::LunCmd::TrueNAS::get_base;" \
+    -e "/PVE::Storage::LunCmd::Comstar::run_lun_command/a \\
+        } elsif (\$scfg\->{iscsiprovider} eq 'truenas') { \\
+            \$msg = PVE::Storage::LunCmd::TrueNAS::run_lun_command(\$scfg, \$timeout, \$method, \@params);" \
+    -e "/my \$path =/a \\
+    # Multipath enhancement" \
+    -e "/my \$path =/a \\
+    eval {" \
+    -e "/my \$path =/a \\
+      my \$wwid = \$class->zfs_get_wwid_number(\$scfg, \$guid);" \
+    -e "/my \$path =/a \\
+      if (\$wwid =~ /^([-\\\@\\\\w.]+)\$/) {" \
+    -e "/my \$path =/a \\
+        \$wwid = \$1;" \
+    -e "/my \$path =/a \\
+      } else {" \
+    -e "/my \$path =/a \\
+        die \"Bad data in '\$wwid'\";" \
+    -e "/my \$path =/a \\
+      }" \
+    -e "/my \$path =/a \\
+      my \$wwid_end = substr \$wwid, 16;" \
+    -e "/my \$path =/a \\
+      my \$mapper = \"\";" \
+    -e "/my \$path =/a \\
+      sleep 3;" \
+    -e "/my \$path =/a \\
+      run_command(\"iscsiadm -m session --rescan\");" \
+    -e "/my \$path =/a \\
+      sleep 3;" \
+    -e "/my \$path =/a \\
+      my \$line = \`/usr/sbin/multipath -ll | grep \"\$\$wwid_end\"\`;" \
+    -e "/my \$path =/a \\
+      my (\$mapper_device) = split(' ' , \$line);" \
+    -e "/my \$path =/a \\
+      \$mapper_device = \"\" unless \$mapper_device;" \
+    -e "/my \$path =/a \\
+      \$mapper .= \$mapper_device;" \
+    -e "/my \$path =/a \\
+      if (\$mapper ne \"\") {" \
+    -e "/my \$path =/a \\
+        \$path = \"/dev/mapper/\$mapper\";" \
+    -e "/my \$path =/a \\
+        sleep 5;" \
+    -e "/my \$path =/a \\
+      }" \
+    -e "/my \$path =/a \\
+    };" \
+    -e "/^1;$/i \\
+sub zfs_get_wwid_number { \\
+  my (\$class, \$scfg, \$guid) = \@_; \\
+  die \"could not find lun_number for guid \$guid\" unless \$guid; \\
+  return \$class->zfs_request(\$scfg, undef, \"list_extent\", \$guid); \\
+}" \
+    "$ZFSPLUGIN_FILEPATH"
+else
+  echo "WARNING: $ZFSPLUGIN_FILEPATH not found, skipping ZFSPlugin.pm sed tweaks."
+fi
+
+# 6) Reload services
+systemctl reload-or-restart pvedaemon.service    || true
+systemctl reload-or-restart pveproxy.service     || true
+systemctl reload-or-restart pvestatd.service     || true
+systemctl reload-or-restart pvescheduler.service || true
+
+echo "Installation complete."
 exit 0
