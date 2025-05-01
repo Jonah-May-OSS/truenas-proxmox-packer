@@ -119,6 +119,7 @@ if [ -f "$ZFSPLUGIN_FILEPATH" ]; then
     -e '/my \$path =/a         \$path = "/dev/mapper/\$mapper";' \
     -e '/my \$path =/a         sleep 5;' \
     -e '/my \$path =/a     }' \
+    -e '/my \$path =/a    };' \
     -e "/^1;$/i \
 \
 # ——— Multipath enhancement helper ———\
