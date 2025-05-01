@@ -83,7 +83,7 @@ eval {" \
     -e "/my \$path =/a \
     my \$wwid = \$class->zfs_get_wwid_number(\$scfg, \$guid);" \
     -e "/my \$path =/a \
-    if (\$wwid =~ /^([\-\\@\\w.]+)$/) {" \
+    if (\$wwid =~ /^([-\@\\w.]+)\$/) {" \
     -e "/my \$path =/a \
         \$wwid = \$1;" \
     -e "/my \$path =/a \
