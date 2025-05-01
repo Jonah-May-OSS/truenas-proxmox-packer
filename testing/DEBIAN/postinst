@@ -55,7 +55,7 @@ if [ -f "$PVEMANAGER_FILEPATH" ]; then
     "$PVEMANAGER_FILEPATH"
 
   sed -i \
-    "s/vm\\.set('hasWriteCacheOption'.*/        vm.set('hasWriteCacheOption', newVal === 'comstar' || newVal === 'truenas' || newVal === 'istgt');/" \
+    "s/vm\\.set('hasWriteCacheOption'.*/    vm.set('hasWriteCacheOption', newVal === 'comstar' || newVal === 'truenas' || newVal === 'istgt');/" \
     "$PVEMANAGER_FILEPATH"
 else
   echo "WARNING: $PVEMANAGER_FILEPATH not found, skipping GUI sed tweaks."
