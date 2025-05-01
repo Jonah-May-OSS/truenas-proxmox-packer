@@ -36,44 +36,60 @@ for orig in \
 done
 
 # 5) Apply GUI tweaks via sed
-# 5.1 pvemanagerlib.js
+
+## 5.1 pvemanagerlib.js
 if [ -f "$PVEMANAGER_FILEPATH" ]; then
   echo "Applying TrueNAS GUI sed tweaks to pvemanagerlib.js..."
   sed -i \
     "/\['comstar', 'Comstar'\]/a \
-        ['truenas', 'TrueNAS']" "$PVEMANAGER_FILEPATH"
-  sed -i "/isComstar: *true,/a \
+        ['truenas', 'TrueNAS']" \
+    "$PVEMANAGER_FILEPATH"
+
+  sed -i \
+    "/isComstar: *true,/a \
             isTrueNAS: false,\\
-            isLIO: false," "$PVEMANAGER_FILEPATH"
-  sed -i "/vm.set('isComstar',/a \
-        vm.set('isTrueNAS', newVal === 'truenas');" "$PVEMANAGER_FILEPATH"
-  sed -i 's/vm\.set('\''hasWriteCacheOption'\''.*/        vm.set('\''hasWriteCacheOption'\'', newVal === 'comstar' || newVal === 'truenas' || newVal === 'istgt');/' "$PVEMANAGER_FILEPATH"
+            isLIO: false," \
+    "$PVEMANAGER_FILEPATH"
+
+  sed -i \
+    "/vm.set('isComstar',/a \
+        vm.set('isTrueNAS', newVal === 'truenas');" \
+    "$PVEMANAGER_FILEPATH"
+
+  sed -i \
+    "s/vm\.set('hasWriteCacheOption'.*/        vm.set('hasWriteCacheOption', newVal === 'comstar' || newVal === 'truenas' || newVal === 'istgt');/" \
+    "$PVEMANAGER_FILEPATH"
 else
   echo "WARNING: $PVEMANAGER_FILEPATH not found, skipping GUI sed tweaks."
 fi
 
-# 5.2 apidoc.js
+## 5.2 apidoc.js
 if [ -f "$APIDOC_FILEPATH" ]; then
   echo "Applying TrueNAS API doc sed tweaks to apidoc.js..."
-  sed -i "/\"transport\" *:/i \
+  sed -i \
+    "/\"transport\" *:/i \
                         \"target\" : {\\
                            \"description\" : \"iSCSI target.\",\\
                            \"optional\" : 1,\\
                            \"type\" : \"string\",\\
                            \"typetext\" : \"<string>\"\\
-                        }," "$APIDOC_FILEPATH"
-  sed -i "/\"fuse\" *: *{/a \
+                        }," \
+    "$APIDOC_FILEPATH"
+
+  sed -i \
+    "/\"fuse\" *: *{/a \
                         \"target\" : {\\
                            \"description\" : \"iSCSI target.\",\\
                            \"optional\" : 1,\\
                            \"type\" : \"string\",\\
                            \"typetext\" : \"<string>\"\\
-                        }," "$APIDOC_FILEPATH"
+                        }," \
+    "$APIDOC_FILEPATH"
 else
   echo "WARNING: $APIDOC_FILEPATH not found, skipping API doc sed tweaks."
 fi
 
-# 5.3 ZFSPlugin.pm
+## 5.3 ZFSPlugin.pm
 if [ -f "$ZFSPLUGIN_FILEPATH" ]; then
   echo "Applying TrueNAS sed tweaks to ZFSPlugin.pm..."
   sed -i \
@@ -82,8 +98,6 @@ if [ -f "$ZFSPLUGIN_FILEPATH" ]; then
     -e 's/Available \[comstar, istgt, iet, LIO\]/Available [comstar, truenas, istgt, iet, LIO]/g' \
     -e '/return PVE::Storage::LunCmd::Comstar::get_base;/a     } elsif (\$scfg->{iscsiprovider} eq '\''truenas'\'') { return PVE::Storage::LunCmd::TrueNAS::get_base; }' \
     -e '/PVE::Storage::LunCmd::Comstar::run_lun_command/ a         } elsif (\$scfg->{iscsiprovider} eq '\''truenas'\'') { \$msg = PVE::Storage::LunCmd::TrueNAS::run_lun_command(\$scfg, \$timeout, \$method, @params); }' \
-    -e '/^}/i # Part of the multipath enhancement' \
-    -e '/^}/i sub zfs_get_wwid_number { my (\$class, \$scfg, \$guid) = @_; die "could not find lun_number for guid \$guid" if !\$guid; return \$class->zfs_request(\$scfg, undef, "list_extent", \$guid); }' \
     -e '/my \$path =/a # Multipath enhancement' \
     -e '/my \$path =/a eval {' \
     -e '/my \$path =/a     my \$wwid = \$class->zfs_get_wwid_number(\$scfg, \$guid);' \
@@ -105,6 +119,14 @@ if [ -f "$ZFSPLUGIN_FILEPATH" ]; then
     -e '/my \$path =/a         \$path = "/dev/mapper/\$mapper";' \
     -e '/my \$path =/a         sleep 5;' \
     -e '/my \$path =/a     }' \
+    -e "/^1;$/i \
+\
+# ——— Multipath enhancement helper ———\
+sub zfs_get_wwid_number {                                       \
+    my (\$class, \$scfg, \$guid) = @_;                             \
+    die \"could not find lun_number for guid \$guid\" unless \$guid; \
+    return \$class->zfs_request(\$scfg, undef, \"list_extent\", \$guid); \
+}" \
     "$ZFSPLUGIN_FILEPATH"
 else
   echo "WARNING: $ZFSPLUGIN_FILEPATH not found, skipping ZFSPlugin.pm sed tweaks."
