@@ -96,8 +96,8 @@ if [ -f "$ZFSPLUGIN_FILEPATH" ]; then
     -e '/use PVE::Storage::LunCmd::Comstar;/a use PVE::Storage::LunCmd::TrueNAS;' \
     -e '/list_view   => 1,/a     list_extent => 1,' \
     -e 's/Available \[comstar, istgt, iet, LIO\]/Available [comstar, truenas, istgt, iet, LIO]/g' \
-    -e '/return PVE::Storage::LunCmd::Comstar::get_base;/a     } elsif (\$scfg->{iscsiprovider} eq '\''truenas'\'') { return PVE::Storage::LunCmd::TrueNAS::get_base; }' \
-    -e '/PVE::Storage::LunCmd::Comstar::run_lun_command/ a         } elsif (\$scfg->{iscsiprovider} eq '\''truenas'\'') { \$msg = PVE::Storage::LunCmd::TrueNAS::run_lun_command(\$scfg, \$timeout, \$method, @params); }' \
+    -e '/return PVE::Storage::LunCmd::Comstar::get_base;/a     } elsif (\$scfg->{iscsiprovider} eq '\''truenas'\'') { return PVE::Storage::LunCmd::TrueNAS::get_base;' \
+    -e '/PVE::Storage::LunCmd::Comstar::run_lun_command/a         } elsif (\$scfg->{iscsiprovider} eq '\''truenas'\'') { \$msg = PVE::Storage::LunCmd::TrueNAS::run_lun_command(\$scfg, \$timeout, \$method, @params); }' \
     -e '/my \$path =/a # Multipath enhancement' \
     -e '/my \$path =/a eval {' \
     -e '/my \$path =/a     my \$wwid = \$class->zfs_get_wwid_number(\$scfg, \$guid);' \
