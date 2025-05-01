@@ -64,8 +64,6 @@ fi
 ## 5.2 ZFSPlugin.pm
 if [ -f "$ZFSPLUGIN_FILEPATH" ]; then
   echo "Applying TrueNAS sed tweaks to ZFSPlugin.pm..."
-  if [ -f "$ZFSPLUGIN_FILEPATH" ]; then
-  echo "Applying TrueNAS sed tweaks to ZFSPlugin.pm..."
   sed -i \
     -e "/use PVE::Storage::LunCmd::Comstar;/a \
 use PVE::Storage::LunCmd::TrueNAS;" \
