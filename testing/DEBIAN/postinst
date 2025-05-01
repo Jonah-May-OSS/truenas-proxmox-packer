@@ -83,8 +83,9 @@ if [ -f "$APIDOC_FILEPATH" ]; then
                             \"optional\" : 1,\\
                             \"type\" : \"string\",\\
                             \"typetext\" : \"<string>\"\\
-                        },” \
+                        }\"\, \
     "$APIDOC_FILEPATH"
+
 else
   echo "WARNING: $APIDOC_FILEPATH not found, skipping API doc sed tweaks."
 fi
