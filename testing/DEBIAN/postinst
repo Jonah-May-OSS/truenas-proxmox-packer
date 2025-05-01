@@ -39,23 +39,23 @@ done
 if [ -f "$PVEMANAGER_FILEPATH" ]; then
   echo "Applying TrueNAS GUI sed tweaks to pvemanagerlib.js..."
   sed -i \
-    "/\['comstar', 'Comstar'\]/a \
-        ['truenas', 'TrueNAS']" \
+    -e "/\['comstar', 'Comstar'\]/a \\
+        ['truenas', 'TrueNAS']," \
     "$PVEMANAGER_FILEPATH"
 
   sed -i \
-    "/isComstar: *true,/a \
-        isTrueNAS: false,\\
-        isLIO: false," \
+    -e "/isComstar: *true,/a \\
+            isTrueNAS: false,\\
+            isLIO: false," \
     "$PVEMANAGER_FILEPATH"
 
   sed -i \
-    "/vm.set('isComstar',/a \
-        vm.set('isTrueNAS', newVal === 'truenas');" \
+    -e "/vm.set('isComstar',/a \\
+            vm.set('isTrueNAS', newVal === 'truenas');" \
     "$PVEMANAGER_FILEPATH"
 
   sed -i \
-    "s/vm\\.set('hasWriteCacheOption'.*/        vm.set('hasWriteCacheOption', newVal === 'comstar' || newVal === 'truenas' || newVal === 'istgt');/" \
+    -e "s/vm\\.set('hasWriteCacheOption'.*/vm.set('hasWriteCacheOption', newVal === 'comstar' || newVal === 'truenas' || newVal === 'istgt');/" \
     "$PVEMANAGER_FILEPATH"
 else
   echo "WARNING: $PVEMANAGER_FILEPATH not found, skipping GUI sed tweaks."
