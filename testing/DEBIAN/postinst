@@ -47,8 +47,8 @@ if [ -f "$PVEMANAGER_FILEPATH" ]; then
 
   sed -i \
     "/isComstar: *true,/a \
-            isTrueNAS: false,\\
-            isLIO: false," \
+        isTrueNAS: false,\\
+        isLIO: false," \
     "$PVEMANAGER_FILEPATH"
 
   sed -i \
@@ -68,44 +68,24 @@ if [ -f "$APIDOC_FILEPATH" ]; then
   echo "Applying TrueNAS API doc sed tweaks to apidoc.js..."
   sed -i \
     "/\"transport\" *:/i \
-                        \"target\" : {\\
-                            \"description\" : \"iSCSI target.\",\\
-                            \"optional\" : 1,\\
-                            \"type\" : \"string\",\\
-                            \"typetext\" : \"<string>\"\\
-                        }," \
+        \"target\" : {\\
+            \"description\" : \"iSCSI target.\",\\
+            \"optional\" : 1,\\
+            \"type\" : \"string\",\\
+            \"typetext\" : \"<string>\"\\
+        }," \
     "$APIDOC_FILEPATH"
 
   sed -i \
-    "/\"features\" *:/a \
-    \\    \"description\" : \"Allow containers access to advanced features.\",\\
-    \\    \"format\" : {\\
-    \\        \"force_rw_sys\" : {\\
-    \\            \"default\" : 0,\\
-    \\            \"description\" : \"Mount /sys in unprivileged containers as \`rw\` instead of \`mixed\`. This can break networking under newer (>= v245) systemd-network use.\",\\
-    \\            \"optional\" : 1,\\
-    \\            \"type\" : \"boolean\"\\
-    \\        },\\
-    \\        \"fuse\" : {\\
-    \\            \"target\" : {\\
-    \\                \"description\" : \"iSCSI target.\",\\
-    \\                \"optional\" : 1,\\
-    \\                \"type\" : \"string\",\\
-    \\                \"typetext\" : \"<string>\"\\
-    \\            },\\
-    \\            \"default\" : 0,\\
-    \\            \"description\" : \"Allow using 'fuse' file systems in a container. Note that interactions between fuse and the freezer cgroup can potentially cause I/O deadlocks.\",\\
-    \\            \"optional\" : 1,\\
-    \\            \"type\" : \"boolean\"\\
-    \\        },\\
-    \\        \"keyctl\" : {\\
-    \\            \"default\" : 0,\\
-    \\            \"description\" : \"For unprivileged containers only: Allow the use of the keyctl() system call. This is required to use docker inside a container. By default unprivileged containers will see this system call as non-existent. This is mostly a workaround for systemd-ne...\",\\
-    \\            \"optional\" : 1,\\
-    \\            \"type\" : \"boolean\"\\
-    \\        }\\
-    \\    }" \
+    "/\"fuse\" *: *{/a \
+        \"target\" : {\\
+            \"description\" : \"iSCSI target.\",\\
+            \"optional\" : 1,\\
+            \"type\" : \"string\",\\
+            \"typetext\" : \"<string>\"\\
+        }," \
     "$APIDOC_FILEPATH"
+
 else
   echo "WARNING: $APIDOC_FILEPATH not found, skipping API doc sed tweaks."
 fi
