@@ -113,7 +113,7 @@ use PVE::Storage::LunCmd::TrueNAS;' \
     -e '/my \$path =/a \
         if ($mapper ne "") {' \
     -e '/my \$path =/a \
-            $path = "/dev/mapper/$mapper";' \
+            \$path = "/dev/mapper/\$mapper";' \
     -e '/my \$path =/a \
             sleep 5;' \
     -e '/my \$path =/a \
