@@ -22,7 +22,7 @@ ZFSPLUGIN_FILEPATH="$LIB_PATH/perl5/PVE/Storage/ZFSPlugin.pm"
 TRUENAS_PLUGIN_FILEPATH="$LIB_PATH/perl5/PVE/Storage/LunCmd/TrueNAS.pm"
 REST_CLIENT_FILEPATH="$LIB_PATH/perl5/REST/Client.pm"
 
-# 4) Patches directory
+# 4) Patches directory (deprecated for pvemanagerlib.js)
 PATCH_DIR="/usr/share/truenas-proxmox/patches"
 
 echo "Running TrueNAS-Proxmox post-install..."
@@ -40,17 +40,34 @@ for orig in \
   }
 done
 
-# 6) Apply GUI patches
-if [ -d "$PATCH_DIR" ]; then
-  echo "Applying GUI patches..."
-  [ -f "$PATCH_DIR/pvemanagerlib.patch" ] && patch --forward "$PVEMANAGER_FILEPATH" < "$PATCH_DIR/pvemanagerlib.patch" || echo "(pvemanagerlib failed)"
-  [ -f "$PATCH_DIR/apidoc.patch" ]       && patch --forward "$APIDOC_FILEPATH"   < "$PATCH_DIR/apidoc.patch"       || echo "(apidoc failed)"
+# 6) Apply GUI tweaks via sed
+if [ -f "$PVEMANAGER_FILEPATH" ]; then
+  echo "Applying TrueNAS GUI sed tweaks to pvemanagerlib.js..."
+  # 6.1 Insert TrueNAS option after Comstar
+  sed -i "/\['comstar', 'Comstar'\]/a \\
+        ['truenas', 'TrueNAS']" "$PVEMANAGER_FILEPATH"
+  # 6.2 Add viewModel flags
+  sed -i "/isComstar: *true,/a \\
+            isTrueNAS: false,\\
+            isLIO: false," "$PVEMANAGER_FILEPATH"
+  # 6.3 In changeISCSIProvider(), add TrueNAS flag
+  sed -i "/vm.set('isComstar',/a \\
+        vm.set('isTrueNAS', newVal === 'truenas');" "$PVEMANAGER_FILEPATH"
+  # 6.4 Replace hasWriteCacheOption logic
+  sed -i "s/vm\.set('hasWriteCacheOption'.*/        vm.set('hasWriteCacheOption', newVal === 'comstar' || newVal === 'truenas' || newVal === 'istgt');/" "$PVEMANAGER_FILEPATH"
+else
+  echo "WARNING: $PVEMANAGER_FILEPATH not found, skipping GUI sed tweaks."
+fi
 
-  # 7) Apply ZFSPlugin.pm patch (now without any -pX)
-  if [ -f "$PATCH_DIR/ZFSPlugin.pm.patch" ]; then
+# 7) Apply remaining patches if present
+if [ -d "$PATCH_DIR" ]; then
+  echo "Applying additional patches..."
+  [ -f "$PATCH_DIR/apidoc.patch" ] && \
+    patch --forward "$APIDOC_FILEPATH" < "$PATCH_DIR/apidoc.patch" || echo "(apidoc patch failed)"
+  [ -f "$PATCH_DIR/ZFSPlugin.pm.patch" ] && {
     echo "Applying ZFSPlugin.pm patch..."
     patch --forward "$ZFSPLUGIN_FILEPATH" < "$PATCH_DIR/ZFSPlugin.pm.patch" || echo "(ZFSPlugin.pm patch failed)"
-  fi
+  }
 fi
 
 # 8) Verify required files
