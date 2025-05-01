@@ -9,7 +9,7 @@ Vcs-Browser: https://github.com/Jonah-May-OSS/truenas-proxmox.git
 Homepage: https://github.com/Jonah-May-OSS/truenas-proxmox/wiki
 Version: FIX_ME
 Architecture: all
-Build-Depends: debhelper-compat (= 13), dh-perl, libwww-perl, libjson-maybexs-perl
+Build-Depends: debhelper-compat (= 13), dh-perl, libwww-perl
 Provides: truenas-proxmox
 Description: TrueNAS Plugin for Proxmox VE
  A Proxmox VE storage plugin to interface with TrueNAS APIs.
