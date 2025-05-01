@@ -77,15 +77,35 @@ if [ -f "$APIDOC_FILEPATH" ]; then
     "$APIDOC_FILEPATH"
 
   sed -i \
-    "/\"fuse\" *: *{/a \
-                        \"target\" : {\\
-                            \"description\" : \"iSCSI target.\",\\
-                            \"optional\" : 1,\\
-                            \"type\" : \"string\",\\
-                            \"typetext\" : \"<string>\"\\
-                        }," \
+    "/\"features\" *:/a \
+    \\    \"description\" : \"Allow containers access to advanced features.\",\\
+    \\    \"format\" : {\\
+    \\        \"force_rw_sys\" : {\\
+    \\            \"default\" : 0,\\
+    \\            \"description\" : \"Mount /sys in unprivileged containers as \`rw\` instead of \`mixed\`. This can break networking under newer (>= v245) systemd-network use.\",\\
+    \\            \"optional\" : 1,\\
+    \\            \"type\" : \"boolean\"\\
+    \\        },\\
+    \\        \"fuse\" : {\\
+    \\            \"target\" : {\\
+    \\                \"description\" : \"iSCSI target.\",\\
+    \\                \"optional\" : 1,\\
+    \\                \"type\" : \"string\",\\
+    \\                \"typetext\" : \"<string>\"\\
+    \\            },\\
+    \\            \"default\" : 0,\\
+    \\            \"description\" : \"Allow using 'fuse' file systems in a container. Note that interactions between fuse and the freezer cgroup can potentially cause I/O deadlocks.\",\\
+    \\            \"optional\" : 1,\\
+    \\            \"type\" : \"boolean\"\\
+    \\        },\\
+    \\        \"keyctl\" : {\\
+    \\            \"default\" : 0,\\
+    \\            \"description\" : \"For unprivileged containers only: Allow the use of the keyctl() system call. This is required to use docker inside a container. By default unprivileged containers will see this system call as non-existent. This is mostly a workaround for systemd-ne...\",\\
+    \\            \"optional\" : 1,\\
+    \\            \"type\" : \"boolean\"\\
+    \\        }\\
+    \\    }" \
     "$APIDOC_FILEPATH"
-
 else
   echo "WARNING: $APIDOC_FILEPATH not found, skipping API doc sed tweaks."
 fi
