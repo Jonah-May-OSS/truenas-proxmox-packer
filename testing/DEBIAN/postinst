@@ -65,67 +65,67 @@ fi
 if [ -f "$ZFSPLUGIN_FILEPATH" ]; then
   echo "Applying TrueNAS sed tweaks to ZFSPlugin.pm..."
   sed -i \
-    -e '/use PVE::Storage::LunCmd::Comstar;/a \
-use PVE::Storage::LunCmd::TrueNAS;' \
-    -e '/list_view   => 1,/a \
-    list_extent => 1,' \
-    -e 's/Available \[comstar, istgt, iet, LIO\]/Available [comstar, truenas, istgt, iet, LIO]/g' \
-    -e '/return PVE::Storage::LunCmd::Comstar::get_base;/a \
-    } elsif ($scfg->{iscsiprovider} eq '\''truenas'\'') { \
-        return PVE::Storage::LunCmd::TrueNAS::get_base;' \
-    -e '/PVE::Storage::LunCmd::Comstar::run_lun_command/a \
-        } elsif ($scfg->{iscsiprovider} eq '\''truenas'\'') { \
-            $msg = PVE::Storage::LunCmd::TrueNAS::run_lun_command($scfg, $timeout, $method, @params);' \
-    -e '/my \$path =/a \
-    # Multipath enhancement' \
-    -e '/my \$path =/a \
-    eval {' \
-    -e '/my \$path =/a \
-        my $wwid = $class->zfs_get_wwid_number($scfg, $guid);' \
-    -e '/my \$path =/a \
-        if ($wwid =~ /^([\-\\@\\w.]+)$/) {' \
-    -e '/my \$path =/a \
-            $wwid = $1;' \
-    -e '/my \$path =/a \
-        } else {' \
-    -e '/my \$path =/a \
-            die "Bad data in \'$wwid\'";' \
-    -e '/my \$path =/a \
-        }' \
-    -e '/my \$path =/a \
-        my $wwid_end = substr $wwid, 16;' \
-    -e '/my \$path =/a \
-        my $mapper = "";' \
-    -e '/my \$path =/a \
-        sleep 3;' \
-    -e '/my \$path =/a \
-        run_command("iscsiadm -m session --rescan");' \
-    -e '/my \$path =/a \
-        sleep 3;' \
-    -e '/my \$path =/a \
-        my $line = `/usr/sbin/multipath -ll | grep "$$wwid_end"`;' \
-    -e '/my \$path =/a \
-        my ($mapper_device) = split('\'' '\'', $line);' \
-    -e '/my \$path =/a \
-        $mapper_device = "" unless $mapper_device;' \
-    -e '/my \$path =/a \
-        $mapper .= $mapper_device;' \
-    -e '/my \$path =/a \
-        if ($mapper ne "") {' \
-    -e '/my \$path =/a \
-            $path = "/dev/mapper/$mapper";' \
-    -e '/my \$path =/a \
-            sleep 5;' \
-    -e '/my \$path =/a \
-        }' \
-    -e '/my \$path =/a \
-    };' \
-    -e '/^1;$/i \
+    -e "/use PVE::Storage::LunCmd::Comstar;/a \
+use PVE::Storage::LunCmd::TrueNAS;" \
+    -e "/list_view   => 1,/a \
+list_extent => 1," \
+    -e "s/Available \[comstar, istgt, iet, LIO\]/Available [comstar, truenas, istgt, iet, LIO]/g" \
+    -e "/return PVE::Storage::LunCmd::Comstar::get_base;/a \
+} elsif (\$scfg\->{iscsiprovider} eq 'truenas') { \
+    return PVE::Storage::LunCmd::TrueNAS::get_base;" \
+    -e "/PVE::Storage::LunCmd::Comstar::run_lun_command/a \
+} elsif (\$scfg\->{iscsiprovider} eq 'truenas') { \
+    \$msg = PVE::Storage::LunCmd::TrueNAS::run_lun_command(\$scfg, \$timeout, \$method, \@params);" \
+    -e "/my \$path =/a \
+# Multipath enhancement" \
+    -e "/my \$path =/a \
+eval {" \
+    -e "/my \$path =/a \
+    my \$wwid = \$class->zfs_get_wwid_number(\$scfg, \$guid);" \
+    -e "/my \$path =/a \
+    if (\$wwid =~ /^([\-\\@\\w.]+)$/) {" \
+    -e "/my \$path =/a \
+        \$wwid = \$1;" \
+    -e "/my \$path =/a \
+    } else {" \
+    -e "/my \$path =/a \
+        die \"Bad data in '\$wwid'\";" \
+    -e "/my \$path =/a \
+    }" \
+    -e "/my \$path =/a \
+    my \$wwid_end = substr \$wwid, 16;" \
+    -e "/my \$path =/a \
+    my \$mapper = \"\";" \
+    -e "/my \$path =/a \
+    sleep 3;" \
+    -e "/my \$path =/a \
+    run_command(\"iscsiadm -m session --rescan\");" \
+    -e "/my \$path =/a \
+    sleep 3;" \
+    -e "/my \$path =/a \
+    my \$line = \`/usr/sbin/multipath -ll | grep \"\$\$wwid_end\"\`;" \
+    -e "/my \$path =/a \
+    my (\$mapper_device) = split(' ','\$line');" \
+    -e "/my \$path =/a \
+    \$mapper_device = \"\" unless \$mapper_device;" \
+    -e "/my \$path =/a \
+    \$mapper .= \$mapper_device;" \
+    -e "/my \$path =/a \
+    if (\$mapper ne \"\") {" \
+    -e "/my \$path =/a \
+        \$path = \"/dev/mapper/\$mapper\";" \
+    -e "/my \$path =/a \
+        sleep 5;" \
+    -e "/my \$path =/a \
+    }" \
+    -e "/my \$path =/a \
+};" \
+    -e "/^1;$/i \
 sub zfs_get_wwid_number { \
-    my ($class, $scfg, $guid) = @_; \
-    die "could not find lun_number for guid $guid" unless $guid; \
-    return $class->zfs_request($scfg, undef, "list_extent", $guid); \
-}' \
+    my (\$class, \$scfg, \$guid) = \@_; \
+    die \"could not find lun_number for guid \$guid\" unless \$guid; \
+    return \$class->zfs_request(\$scfg, undef, \"list_extent\", \$guid); \
+}" \
     "$ZFSPLUGIN_FILEPATH"
 else
   echo "WARNING: $ZFSPLUGIN_FILEPATH not found, skipping ZFSPlugin.pm sed tweaks."
