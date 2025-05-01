@@ -76,13 +76,13 @@ if [ -f "$APIDOC_FILEPATH" ]; then
                         },” \
     "$APIDOC_FILEPATH"
 
-  sed -i \
+    sed -i \
     "/\"fuse\" *: *{/a \
                         \"target\" : {\\
-                           \"description\" : \"iSCSI target.\",\\
-                           \"optional\" : 1,\\
-                           \"type\" : \"string\",\\
-                           \"typetext\" : \"<string>\"\\
+                            \"description\" : \"iSCSI target.\",\\
+                            \"optional\" : 1,\\
+                            \"type\" : \"string\",\\
+                            \"typetext\" : \"<string>\"\\
                         },” \
     "$APIDOC_FILEPATH"
 else
