@@ -24,13 +24,16 @@ jobs:
         shell: bash
         run: |
           REF="${{ github.event.client_payload.ref }}"
-          # Extract the branch or tag
+          
+          # Initialize branch and tag variables
+          BRANCH=""
+          TAG=""
+
+          # Extract the branch or tag based on the ref type
           if [[ "$REF" =~ ^refs/heads/ ]]; then
             BRANCH="${REF#refs/heads/}"
-            TAG=""
           elif [[ "$REF" =~ ^refs/tags/ ]]; then
             TAG="${REF#refs/tags/}"
-            BRANCH=""
           fi
 
           echo "GitHub ref is: $REF"
@@ -49,7 +52,7 @@ jobs:
           elif [[ "$BRANCH" == "main" ]]; then
             FOLDER="development"
             VERSION=$(date +'%Y%m%d%H%M%S')
-            REPO_NAME="truenas-proxmox-snapshots"
+            REPO_NAME="truenas-proxmox-development"
           else
             echo "ERROR: Unknown branch or tag '$BRANCH'" >&2
             exit 1
@@ -59,7 +62,6 @@ jobs:
           echo "buildFolder=$FOLDER" >> "$GITHUB_OUTPUT"
           echo "debVersion=$VERSION" >> "$GITHUB_OUTPUT"
           echo "artifactRepo=$REPO_NAME" >> "$GITHUB_OUTPUT"
-
 
       - name: Checkout plugin source
         uses: actions/checkout@v4
