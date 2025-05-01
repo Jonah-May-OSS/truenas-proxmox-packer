@@ -17,7 +17,6 @@ esac
 
 # 3) Define file paths
 PVEMANAGER_FILEPATH="$LIB_PATH/pve-manager/js/pvemanagerlib.js"
-APIDOC_FILEPATH="$LIB_PATH/pve-docs/api-viewer/apidoc.js"
 ZFSPLUGIN_FILEPATH="$LIB_PATH/perl5/PVE/Storage/ZFSPlugin.pm"
 TRUENAS_PLUGIN_FILEPATH="$LIB_PATH/perl5/PVE/Storage/LunCmd/TrueNAS.pm"
 
@@ -27,7 +26,6 @@ echo "Running TrueNAS-Proxmox post-install..."
 [ "$_DEBUG" = "on" ] && echo "Backing up originals..."
 for orig in \
   "$PVEMANAGER_FILEPATH" \
-  "$APIDOC_FILEPATH" \
   "$ZFSPLUGIN_FILEPATH"; do
   [ -f "$orig" ] && [ ! -f "${orig}.orig" ] && {
     echo " - cp $orig → ${orig}.orig"
@@ -42,18 +40,18 @@ if [ -f "$PVEMANAGER_FILEPATH" ]; then
   echo "Applying TrueNAS GUI sed tweaks to pvemanagerlib.js..."
   sed -i \
     "/\['comstar', 'Comstar'\]/a \
-        ['truenas', 'TrueNAS']" \
+        \t['truenas', 'TrueNAS']" \
     "$PVEMANAGER_FILEPATH"
 
   sed -i \
     "/isComstar: *true,/a \
-        isTrueNAS: false,\\
-        isLIO: false," \
+        \t    isTrueNAS: false,\\
+            isLIO: false," \
     "$PVEMANAGER_FILEPATH"
 
   sed -i \
     "/vm.set('isComstar',/a \
-        vm.set('isTrueNAS', newVal === 'truenas');" \
+        \t    vm.set('isTrueNAS', newVal === 'truenas');" \
     "$PVEMANAGER_FILEPATH"
 
   sed -i \
@@ -63,34 +61,7 @@ else
   echo "WARNING: $PVEMANAGER_FILEPATH not found, skipping GUI sed tweaks."
 fi
 
-## 5.2 apidoc.js
-if [ -f "$APIDOC_FILEPATH" ]; then
-  echo "Applying TrueNAS API doc sed tweaks to apidoc.js..."
-  sed -i \
-    "/\"transport\" *:/i \
-        \"target\" : {\\
-            \"description\" : \"iSCSI target.\",\\
-            \"optional\" : 1,\\
-            \"type\" : \"string\",\\
-            \"typetext\" : \"<string>\"\\
-        }," \
-    "$APIDOC_FILEPATH"
-
-  sed -i \
-    "/\"fuse\" *: *{/a \
-        \"target\" : {\\
-            \"description\" : \"iSCSI target.\",\\
-            \"optional\" : 1,\\
-            \"type\" : \"string\",\\
-            \"typetext\" : \"<string>\"\\
-        }," \
-    "$APIDOC_FILEPATH"
-
-else
-  echo "WARNING: $APIDOC_FILEPATH not found, skipping API doc sed tweaks."
-fi
-
-## 5.3 ZFSPlugin.pm
+## 5.2 ZFSPlugin.pm
 if [ -f "$ZFSPLUGIN_FILEPATH" ]; then
   echo "Applying TrueNAS sed tweaks to ZFSPlugin.pm..."
   sed -i \
