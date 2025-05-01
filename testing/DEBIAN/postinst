@@ -66,13 +66,13 @@ fi
 ## 5.2 apidoc.js
 if [ -f "$APIDOC_FILEPATH" ]; then
   echo "Applying TrueNAS API doc sed tweaks to apidoc.js..."
-  sed -i \
+    sed -i \
     "/\"transport\" *:/i \
                         \"target\" : {\\
-                           \"description\" : \"iSCSI target.\",\\
-                           \"optional\" : 1,\\
-                           \"type\" : \"string\",\\
-                           \"typetext\" : \"<string>\"\\
+                            \"description\" : \"iSCSI target.\",\\
+                            \"optional\" : 1,\\
+                            \"type\" : \"string\",\\
+                            \"typetext\" : \"<string>\"\\
                         },” \
     "$APIDOC_FILEPATH"
 
