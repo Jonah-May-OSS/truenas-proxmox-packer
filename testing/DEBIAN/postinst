@@ -98,7 +98,7 @@ if [ -f "$ZFSPLUGIN_FILEPATH" ]; then
     -e '/my \$path =/a     run_command("iscsiadm -m session --rescan");' \
     -e '/my \$path =/a     sleep 3;' \
     -e '/my \$path =/a     my \$line = `/usr/sbin/multipath -ll | grep "\$wwid_end"`;' \
-    -e '/my \$path =/a     my (\$mapper_device) = split(''' '''', \$line);' \
+    -e '/my \$path =/a     my ($mapper_device) = split(\' \', $line);' \
     -e '/my \$path =/a     \$mapper_device = "" unless \$mapper_device;' \
     -e '/my \$path =/a     \$mapper .= \$mapper_device;' \
     -e '/my \$path =/a     if (\$mapper ne "") {' \
