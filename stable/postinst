@@ -1,0 +1,141 @@
+#!/bin/sh
+# TrueNAS-Proxmox post-install script
+set -eu
+
+_DEBUG=${_DEBUG:-on}
+
+# 1) Detect Proxmox version
+if PVE_VERSION=$(dpkg-query --showformat='${Version}' --show pve-manager 2>/dev/null); then :; else PVE_VERSION="unknown"; fi
+MAJOR_VER=${PVE_VERSION%%.*}
+[ "$_DEBUG" = "on" ] && echo "Proxmox Version: $PVE_VERSION (Major: $MAJOR_VER)"
+
+# 2) Determine library path
+case "$MAJOR_VER" in
+  7) LIB_PATH="/usr/share/pve-7" ;;
+  *) LIB_PATH="/usr/share" ;;
+esac
+
+# 3) Define file paths
+PVEMANAGER_FILEPATH="$LIB_PATH/pve-manager/js/pvemanagerlib.js"
+ZFSPLUGIN_FILEPATH="$LIB_PATH/perl5/PVE/Storage/ZFSPlugin.pm"
+TRUENAS_PLUGIN_FILEPATH="$LIB_PATH/perl5/PVE/Storage/LunCmd/TrueNAS.pm"
+
+echo "Running TrueNAS-Proxmox post-install..."
+
+# 4) Backup originals
+[ "$_DEBUG" = "on" ] && echo "Backing up originals..."
+for orig in \
+  "$PVEMANAGER_FILEPATH" \
+  "$ZFSPLUGIN_FILEPATH"; do
+  [ -f "$orig" ] && [ ! -f "${orig}.orig" ] && {
+    echo " - cp $orig → ${orig}.orig"
+    cp -a "$orig" "${orig}.orig"
+  }
+done
+
+# 5) Apply GUI tweaks via sed
+
+## 5.1 pvemanagerlib.js
+if [ -f "$PVEMANAGER_FILEPATH" ]; then
+  echo "Applying TrueNAS GUI sed tweaks to pvemanagerlib.js..."
+  sed -i \
+    -e "/\['comstar', 'Comstar'\]/a \\
+        ['truenas', 'TrueNAS']," \
+    "$PVEMANAGER_FILEPATH"
+
+  sed -i \
+    -e "/isComstar: *true,/a \\
+            isTrueNAS: false,\\
+            isLIO: false," \
+    "$PVEMANAGER_FILEPATH"
+
+  sed -i \
+    -e "/vm.set('isComstar',/a \\
+            vm.set('isTrueNAS', newVal === 'truenas');" \
+    "$PVEMANAGER_FILEPATH"
+
+  sed -i \
+    -e "s/vm\\.set('hasWriteCacheOption'.*/vm.set('hasWriteCacheOption', newVal === 'comstar' || newVal === 'truenas' || newVal === 'istgt');/" \
+    "$PVEMANAGER_FILEPATH"
+else
+  echo "WARNING: $PVEMANAGER_FILEPATH not found, skipping GUI sed tweaks."
+fi
+
+## 5.2 ZFSPlugin.pm
+if [ -f "$ZFSPLUGIN_FILEPATH" ]; then
+  echo "Applying TrueNAS sed tweaks to ZFSPlugin.pm..."
+  sed -i \
+    -e "/use PVE::Storage::LunCmd::Comstar;/a \
+use PVE::Storage::LunCmd::TrueNAS;" \
+    -e "/list_view   => 1,/a \\
+    list_extent => 1," \
+    -e "s/Available \[comstar, istgt, iet, LIO\]/Available [comstar, truenas, istgt, iet, LIO]/g" \
+    -e "/return PVE::Storage::LunCmd::Comstar::get_base;/a \\
+    } elsif (\$scfg\->{iscsiprovider} eq 'truenas') { \\
+        return PVE::Storage::LunCmd::TrueNAS::get_base;" \
+    -e "/PVE::Storage::LunCmd::Comstar::run_lun_command/a \\
+        } elsif (\$scfg\->{iscsiprovider} eq 'truenas') { \\
+            \$msg = PVE::Storage::LunCmd::TrueNAS::run_lun_command(\$scfg, \$timeout, \$method, \@params);" \
+    -e "/my \$path =/a \\
+    # Multipath enhancement" \
+    -e "/my \$path =/a \\
+    eval {" \
+    -e "/my \$path =/a \\
+      my \$wwid = \$class->zfs_get_wwid_number(\$scfg, \$guid);" \
+    -e "/my \$path =/a \\
+      if (\$wwid =~ /^([-\\\@\\\\w.]+)\$/) {" \
+    -e "/my \$path =/a \\
+        \$wwid = \$1;" \
+    -e "/my \$path =/a \\
+      } else {" \
+    -e "/my \$path =/a \\
+        die \"Bad data in '\$wwid'\";" \
+    -e "/my \$path =/a \\
+      }" \
+    -e "/my \$path =/a \\
+      my \$wwid_end = substr \$wwid, 16;" \
+    -e "/my \$path =/a \\
+      my \$mapper = \"\";" \
+    -e "/my \$path =/a \\
+      sleep 3;" \
+    -e "/my \$path =/a \\
+      run_command(\"iscsiadm -m session --rescan\");" \
+    -e "/my \$path =/a \\
+      sleep 3;" \
+    -e "/my \$path =/a \\
+      my \$line = \`/usr/sbin/multipath -ll | grep \"\$\$wwid_end\"\`;" \
+    -e "/my \$path =/a \\
+      my (\$mapper_device) = split(' ' , \$line);" \
+    -e "/my \$path =/a \\
+      \$mapper_device = \"\" unless \$mapper_device;" \
+    -e "/my \$path =/a \\
+      \$mapper .= \$mapper_device;" \
+    -e "/my \$path =/a \\
+      if (\$mapper ne \"\") {" \
+    -e "/my \$path =/a \\
+        \$path = \"/dev/mapper/\$mapper\";" \
+    -e "/my \$path =/a \\
+        sleep 5;" \
+    -e "/my \$path =/a \\
+      }" \
+    -e "/my \$path =/a \\
+    };" \
+    -e "/^1;$/i \\
+sub zfs_get_wwid_number { \\
+  my (\$class, \$scfg, \$guid) = \@_; \\
+  die \"could not find lun_number for guid \$guid\" unless \$guid; \\
+  return \$class->zfs_request(\$scfg, undef, \"list_extent\", \$guid); \\
+}" \
+    "$ZFSPLUGIN_FILEPATH"
+else
+  echo "WARNING: $ZFSPLUGIN_FILEPATH not found, skipping ZFSPlugin.pm sed tweaks."
+fi
+
+# 6) Reload services
+systemctl reload-or-restart pvedaemon.service    || true
+systemctl reload-or-restart pveproxy.service     || true
+systemctl reload-or-restart pvestatd.service     || true
+systemctl reload-or-restart pvescheduler.service || true
+
+echo "Installation complete."
+exit 0
