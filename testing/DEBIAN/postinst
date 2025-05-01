@@ -40,18 +40,18 @@ if [ -f "$PVEMANAGER_FILEPATH" ]; then
   echo "Applying TrueNAS GUI sed tweaks to pvemanagerlib.js..."
   sed -i \
     "/\['comstar', 'Comstar'\]/a \
-        \t['truenas', 'TrueNAS']" \
+                ['truenas', 'TrueNAS']" \
     "$PVEMANAGER_FILEPATH"
 
   sed -i \
     "/isComstar: *true,/a \
-        \t    isTrueNAS: false,\\
+                    isTrueNAS: false,\\
             isLIO: false," \
     "$PVEMANAGER_FILEPATH"
 
   sed -i \
     "/vm.set('isComstar',/a \
-        \t    vm.set('isTrueNAS', newVal === 'truenas');" \
+                    vm.set('isTrueNAS', newVal === 'truenas');" \
     "$PVEMANAGER_FILEPATH"
 
   sed -i \
