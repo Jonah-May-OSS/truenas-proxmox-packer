@@ -42,13 +42,15 @@ jobs:
 
           # Handle if it's a tag
           if [[ -n "$TAG" ]]; then
-            if [[ "$TAG" =~ ^Release ]]; then
+            # Check if it's a stable release (e.g., 3.0.0)
+            if [[ "$TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
               FOLDER="stable"
-              VERSION="${TAG#Release }"
+              VERSION="$TAG"
               REPO_NAME="truenas-proxmox"
-            elif [[ "$TAG" =~ ^Beta ]]; then
+            # Check if it's a testing/beta release (e.g., 3.0.0-beta7)
+            elif [[ "$TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+- ]]; then
               FOLDER="testing"
-              VERSION="${TAG#Beta }"
+              VERSION="$TAG"
               REPO_NAME="truenas-proxmox-testing"
             else
               echo "ERROR: Unknown tag format '$TAG'" >&2
