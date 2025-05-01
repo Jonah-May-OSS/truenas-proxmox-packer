@@ -1,39 +1,51 @@
-#!/bin/bash
-set -euo pipefail
+#!/bin/sh
+# TrueNAS-Proxmox post-removal script (DEBIAN/postrm)
+# Handles package remove, purge, and upgrade cleanup
 
-# TrueNAS-Proxmox pre-removal script (DEBIAN/prerm)
-# Handles both normal upgrade and failed-upgrade cases
+set -eu
 
-ACTION="${1:-}"  # e.g. upgrade, failed-upgrade, remove, deconfigure
+# Debug toggle
+_DEBUG=${_DEBUG:-on}
 
-echo "Initiating 'prerm' for TrueNAS-Proxmox package with argument '$ACTION'..."
+# Base installation paths
+LIB_PATH="/usr/share"
+TRUENAS_PLUGIN_FILEPATH="${LIB_PATH}/perl5/PVE/Storage/LunCmd/TrueNAS.pm"
+ZFSPLUGIN_FILEPATH="${LIB_PATH}/perl5/PVE/Storage/ZFSPlugin.pm"
+PVEMANAGER_FILEPATH="${LIB_PATH}/pve-manager/js/pvemanagerlib.js"
+APIDOC_FILEPATH="${LIB_PATH}/pve-docs/api-viewer/apidoc.js"
 
-case "$ACTION" in
-  upgrade|failed-upgrade|abort-upgrade|abort-remove|abort-deconfigure)
-    echo "Preparing system for removal or upgrade of truenas-proxmox package..."
-    # Restore any original files if present
-    if [ -f /usr/share/perl5/PVE/Storage/ZFSPlugin.pm.orig ]; then
-      mv -f /usr/share/perl5/PVE/Storage/ZFSPlugin.pm.orig /usr/share/perl5/PVE/Storage/ZFSPlugin.pm
+# Restore a .orig backup if present
+restore_backup() {
+    target="$1"
+    orig="${target}.orig"
+    if [ -f "$orig" ]; then
+        echo "Restoring original: $target from $orig"
+        mv -f "$orig" "$target"
     fi
-    if [ -f /usr/share/pve-manager/js/pvemanagerlib.js.orig ]; then
-      mv -f /usr/share/pve-manager/js/pvemanagerlib.js.orig /usr/share/pve-manager/js/pvemanagerlib.js
-    fi
-    if [ -f /usr/share/pve-docs/api-viewer/apidoc.js.orig ]; then
-      mv -f /usr/share/pve-docs/api-viewer/apidoc.js.orig /usr/share/pve-docs/api-viewer/apidoc.js
-    fi
-    # Attempt to restart services for a clean state
-    systemctl reload-or-restart pvescheduler.service  || true
-    systemctl reload-or-restart pvedaemon.service    || true
-    systemctl reload-or-restart pvestatd.service     || true
-    systemctl reload-or-restart pveproxy.service     || true
+}
+
+echo "Running postrm with action '${1:-}'..."
+
+case "${1:-}" in
+  remove)
+    echo "-- remove: cleaning plugin files and restoring originals"
+    rm -f "$TRUENAS_PLUGIN_FILEPATH" || true
+    restore_backup "$ZFSPLUGIN_FILEPATH"
+    restore_backup "$PVEMANAGER_FILEPATH"
+    restore_backup "$APIDOC_FILEPATH"
     ;;
 
-  remove|deconfigure)
-    echo "Prerm: standard removal/deconfigure, no additional actions."
+  purge)
+    echo "-- purge: removing leftover .orig backups"
+    find "$LIB_PATH" -type f -name '*.orig' -delete || true
+    ;;
+
+  upgrade|abort-upgrade)
+    echo "-- $1: no post-removal cleanup needed"
     ;;
 
   *)
-    echo "No action needed for prerm '$ACTION'."
+    echo "-- no action for postrm arg '$1'"
     ;;
 esac
 
