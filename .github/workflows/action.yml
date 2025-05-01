@@ -60,7 +60,7 @@ jobs:
           elif [[ "$BRANCH" == "main" ]]; then
             FOLDER="development"
             VERSION=$(date +'%Y%m%d%H%M%S')
-            REPO_NAME="truenas-proxmox-development"
+            REPO_NAME="truenas-proxmox-snapshots"
           else
             echo "ERROR: Unknown branch '$BRANCH'" >&2
             exit 1
