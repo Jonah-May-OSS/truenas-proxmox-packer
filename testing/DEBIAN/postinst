@@ -89,11 +89,11 @@ use PVE::Storage::LunCmd::TrueNAS;' \
     -e '/my \$path =/a \
         } else {' \
     -e '/my \$path =/a \
-            die "Bad data in \'$wwid\'";' \
+            die "Bad data in \'\$wwid\'";' \
     -e '/my \$path =/a \
         }' \
     -e '/my \$path =/a \
-        my $wwid_end = substr $wwid, 16;' \
+        my $wwid_end = substr \$wwid, 16;' \
     -e '/my \$path =/a \
         my $mapper = "";' \
     -e '/my \$path =/a \
