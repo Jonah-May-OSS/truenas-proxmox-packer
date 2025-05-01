@@ -112,14 +112,43 @@ sub zfs_get_wwid_number {\
     return \$class->zfs_request(\$scfg, undef, "list_extent", \$guid);\
 }\
 ' "$ZFSPLUGIN_FILEPATH"
-  # 6.6.7 Add multipath eval block after 'my $path = '
-  sed -i '/my \$path =/a \
-# Multipath enhancement\
-eval {\
-    my \$wwid = \$class->zfs_get_wwid_number(\$scfg, \$guid);\
-    if (\$wwid =~ /^([\-\\@\\w.]+)$/) {\
-        \$wwid = \$1;\
-    } else {\
+  # 6.6.7 Insert multipath handling lines via loop
+  if [ -f "$ZFSPLUGIN_FILEPATH" ]; then
+    echo "Inserting multipath handling into ZFSPlugin.pm via sed loops..."
+    insert_lines=( \
+      "# Multipath enhancement" \
+      "eval {" \
+      "    my \$wwid = \$class->zfs_get_wwid_number(\$scfg, \$guid);" \
+      "    if (\$wwid =~ /^([\-\@\w.]+)$/) {" \
+      "        \$wwid = \$1;" \
+      "    } else {" \
+      "        die \"Bad data in '\\$wwid'\";" \
+      "    }" \
+      "    my \$wwid_end = substr \$wwid, 16;" \
+      "    my \$mapper = '';" \
+      "    sleep 3;" \
+      "    run_command(\"iscsiadm -m session --rescan\");" \
+      "    sleep 3;" \
+      "    my \$line = \\\`/usr/sbin/multipath -ll | grep "\\$wwid_end"\\`;" \
+      "    my (\$mapper_device) = split(' ', \$line);" \
+      "    \$mapper_device = '' unless \$mapper_device;" \
+      "    \$mapper .= \$mapper_device;" \
+      "    if (\$mapper =~ /^([\-\@\w.]+)$/) {" \
+      "        \$mapper = \$1;" \
+      "    } else {" \
+      "        \$mapper = '';" \
+      "    }" \
+      "    if (\$mapper ne \"\") {" \
+      "        \$path = \"/dev/mapper/\$mapper\";" \
+      "        sleep 5;" \
+      "    }" \
+      "};" \
+    )
+    for line in "${insert_lines[@]}"; do
+      sed -i "/my \$path =/a $line" "$ZFSPLUGIN_FILEPATH"
+    done
+  else
+ {\
         die "Bad data in '\$wwid'";\
     }\
     my \$wwid_end = substr \$wwid, 16;\
