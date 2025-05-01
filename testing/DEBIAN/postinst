@@ -20,224 +20,97 @@ PVEMANAGER_FILEPATH="$LIB_PATH/pve-manager/js/pvemanagerlib.js"
 APIDOC_FILEPATH="$LIB_PATH/pve-docs/api-viewer/apidoc.js"
 ZFSPLUGIN_FILEPATH="$LIB_PATH/perl5/PVE/Storage/ZFSPlugin.pm"
 TRUENAS_PLUGIN_FILEPATH="$LIB_PATH/perl5/PVE/Storage/LunCmd/TrueNAS.pm"
-REST_CLIENT_FILEPATH="$LIB_PATH/perl5/REST/Client.pm"
-
-# 4) Patches directory (deprecated for pvemanagerlib.js)
-PATCH_DIR="/usr/share/truenas-proxmox/patches"
 
 echo "Running TrueNAS-Proxmox post-install..."
 
-# 5) Backup originals
+# 4) Backup originals
 [ "$_DEBUG" = "on" ] && echo "Backing up originals..."
 for orig in \
   "$PVEMANAGER_FILEPATH" \
   "$APIDOC_FILEPATH" \
-  "$ZFSPLUGIN_FILEPATH" \
-; do
+  "$ZFSPLUGIN_FILEPATH"; do
   [ -f "$orig" ] && [ ! -f "${orig}.orig" ] && {
     echo " - cp $orig → ${orig}.orig"
     cp -a "$orig" "${orig}.orig"
   }
 done
 
-# 6) Apply GUI tweaks via sed
+# 5) Apply GUI tweaks via sed
+# 5.1 pvemanagerlib.js
 if [ -f "$PVEMANAGER_FILEPATH" ]; then
   echo "Applying TrueNAS GUI sed tweaks to pvemanagerlib.js..."
-  # 6.1 Insert TrueNAS option after Comstar
-  sed -i "/\['comstar', 'Comstar'\]/a \
+  sed -i \
+    "/\['comstar', 'Comstar'\]/a \
         ['truenas', 'TrueNAS']" "$PVEMANAGER_FILEPATH"
-  # 6.2 Add viewModel flags
   sed -i "/isComstar: *true,/a \
-            isTrueNAS: false,\
+            isTrueNAS: false,\\
             isLIO: false," "$PVEMANAGER_FILEPATH"
-  # 6.3 In changeISCSIProvider(), add TrueNAS flag
   sed -i "/vm.set('isComstar',/a \
         vm.set('isTrueNAS', newVal === 'truenas');" "$PVEMANAGER_FILEPATH"
-  # 6.4 Replace hasWriteCacheOption logic
-  sed -i 's/vm\.set('"'"'hasWriteCacheOption'"'"'.*/        vm.set('"'"'hasWriteCacheOption'"'"', newVal === 'comstar' || newVal === 'truenas' || newVal === 'istgt');/' "$PVEMANAGER_FILEPATH"
+  sed -i 's/vm\.set('\''hasWriteCacheOption'\''.*/        vm.set('\''hasWriteCacheOption'\'', newVal === 'comstar' || newVal === 'truenas' || newVal === 'istgt');/' "$PVEMANAGER_FILEPATH"
 else
   echo "WARNING: $PVEMANAGER_FILEPATH not found, skipping GUI sed tweaks."
 fi
 
-# 6.5 Apply apidoc.js tweaks via sed
+# 5.2 apidoc.js
 if [ -f "$APIDOC_FILEPATH" ]; then
   echo "Applying TrueNAS API doc sed tweaks to apidoc.js..."
-  # 6.5.1 Insert 'target' before transport entries
   sed -i "/\"transport\" *:/i \
-                        \"target\" : {\
-                           \"description\" : \"iSCSI target.\",\
-                           \"optional\" : 1,\
-                           \"type\" : \"string\",\
-                           \"typetext\" : \"<string>\"\
+                        \"target\" : {\\
+                           \"description\" : \"iSCSI target.\",\\
+                           \"optional\" : 1,\\
+                           \"type\" : \"string\",\\
+                           \"typetext\" : \"<string>\"\\
                         }," "$APIDOC_FILEPATH"
-  # 6.5.2 Insert 'target' after fuse blocks
   sed -i "/\"fuse\" *: *{/a \
-                        \"target\" : {\
-                           \"description\" : \"iSCSI target.\",\
-                           \"optional\" : 1,\
-                           \"type\" : \"string\",\
-                           \"typetext\" : \"<string>\"\
+                        \"target\" : {\\
+                           \"description\" : \"iSCSI target.\",\\
+                           \"optional\" : 1,\\
+                           \"type\" : \"string\",\\
+                           \"typetext\" : \"<string>\"\\
                         }," "$APIDOC_FILEPATH"
 else
-  echo "WARNING: $APIDOC_FILEPATH not found, skipping apidoc.js sed tweaks."
+  echo "WARNING: $APIDOC_FILEPATH not found, skipping API doc sed tweaks."
 fi
 
-# 6.6 Apply ZFSPlugin.pm tweaks via sed
+# 5.3 ZFSPlugin.pm
 if [ -f "$ZFSPLUGIN_FILEPATH" ]; then
   echo "Applying TrueNAS sed tweaks to ZFSPlugin.pm..."
-  # 6.6.1 Insert TrueNAS LunCmd use line
-  sed -i '/use PVE::Storage::LunCmd::Comstar;/a use PVE::Storage::LunCmd::TrueNAS;/' "$ZFSPLUGIN_FILEPATH"
-  # 6.6.2 Add list_extent in plugin registration
-  sed -i '/list_view   => 1,/a \    list_extent => 1,' "$ZFSPLUGIN_FILEPATH"
-  # 6.6.3 Extend unknown provider die list
-  sed -i 's/Available \[comstar, istgt, iet, LIO\]/Available [comstar, truenas, istgt, iet, LIO]/g' "$ZFSPLUGIN_FILEPATH"
-  # 6.6.4 Add get_base branch
-  sed -i '/return PVE::Storage::LunCmd::Comstar::get_base;/a \
-    } elsif (\$scfg->{iscsiprovider} eq '''truenas''') {\
-        return PVE::Storage::LunCmd::TrueNAS::get_base;\
-' "$ZFSPLUGIN_FILEPATH"
-  # 6.6.5 Add run_lun_command branch
-  sed -i '/PVE::Storage::LunCmd::Comstar::run_lun_command/ a \
-        } elsif (\$scfg->{iscsiprovider} eq '''truenas''') {\
-            \$msg = PVE::Storage::LunCmd::TrueNAS::run_lun_command(\$scfg, \$timeout, \$method, @params);\
-' "$ZFSPLUGIN_FILEPATH"
-  # 6.6.6 Add zfs_get_wwid_number sub
-  sed -i '/^}/i \
-# Part of the multipath enhancement\
-sub zfs_get_wwid_number {\
-    my (\$class, \$scfg, \$guid) = @_;\
-\
-    die "could not find lun_number for guid \$guid" if !\$guid;\
-\
-    return \$class->zfs_request(\$scfg, undef, "list_extent", \$guid);\
-}\
-' "$ZFSPLUGIN_FILEPATH"
-  # 6.6.7 Insert multipath handling into ZFSPlugin.pm via sed loops
-  if [ -f "$ZFSPLUGIN_FILEPATH" ]; then
-    echo "Inserting multipath handling into ZFSPlugin.pm via sed loops..."
-    insert_lines=( \
-      "# Multipath enhancement" \
-      "eval {" \
-      "    my \$wwid = \$class->zfs_get_wwid_number(\$scfg, \$guid);" \
-      "    if (\$wwid =~ /^([\-\@\w.]+)\$/) {" \
-      "        \$wwid = \$1;" \
-      "    } else {" \
-      "        die \"Bad data in '\\$wwid'\";" \
-      "    }" \
-      "    my \$wwid_end = substr \$wwid, 16;" \
-      "    my \$mapper = '';" \
-      "    sleep 3;" \
-      "    run_command(\"iscsiadm -m session --rescan\");" \
-      "    sleep 3;" \
-      "    my \$line = \`/usr/sbin/multipath -ll | grep "\$wwid_end"\`;" \
-      "    my (\$mapper_device) = split(' ', \$line);" \
-      "    \$mapper_device = '' unless \$mapper_device;" \
-      "    \$mapper .= \$mapper_device;" \
-      "    if (\$mapper =~ /^([\-\@\w.]+)\$/) {" \
-      "        \$mapper = \$1;" \
-      "    } else {" \
-      "        \$mapper = '';" \
-      "    }" \
-      "    if (\$mapper ne \"\") {" \
-      "        \$path = \"/dev/mapper/\$mapper\";" \
-      "        sleep 5;" \
-      "    }" \
-      "};" \
-    )
-    for line in "${insert_lines[@]}"; do
-      sed -i "/my \$path =/a $line" "$ZFSPLUGIN_FILEPATH"
-    done
-  else
-    echo "WARNING: $ZFSPLUGIN_FILEPATH not found, skipping multipath sed tweaks."
-  fi {" \
-      "        die \"Bad data in '\\$wwid'\";" \
-      "    }" \
-      "    my \$wwid_end = substr \$wwid, 16;" \
-      "    my \$mapper = '';" \
-      "    sleep 3;" \
-      "    run_command(\"iscsiadm -m session --rescan\");" \
-      "    sleep 3;" \
-      "    my \$line = \\\`/usr/sbin/multipath -ll | grep "\\$wwid_end"\\`;" \
-      "    my (\$mapper_device) = split(' ', \$line);" \
-      "    \$mapper_device = '' unless \$mapper_device;" \
-      "    \$mapper .= \$mapper_device;" \
-      "    if (\$mapper =~ /^([\-\@\w.]+)$/) {" \
-      "        \$mapper = \$1;" \
-      "    } else {" \
-      "        \$mapper = '';" \
-      "    }" \
-      "    if (\$mapper ne \"\") {" \
-      "        \$path = \"/dev/mapper/\$mapper\";" \
-      "        sleep 5;" \
-      "    }" \
-      "};" \
-    )
-    for line in "${insert_lines[@]}"; do
-      sed -i "/my \$path =/a $line" "$ZFSPLUGIN_FILEPATH"
-    done
-  else
- {\
-        die "Bad data in '\$wwid'";\
-    }\
-    my \$wwid_end = substr \$wwid, 16;\
-\
-    my \$mapper = '';\
-    sleep 3;\
-    run_command("iscsiadm -m session --rescan");\
-    sleep 3;\
-    my \$line = `/usr/sbin/multipath -ll | grep "\$wwid_end"`;\
-    my (\$mapper_device) = split(' ', \$line);\
-    \$mapper_device = '' unless \$mapper_device;\
-    \$mapper .= \$mapper_device;\
-\
-    if (\$mapper =~ /^([\-\\@\\w.]+)$/) {\
-        \$mapper = \$1;\
-    } else {\
-        \$mapper = '';\
-    }\
-\
-    if (\$mapper ne "") {\
-        \$path = "/dev/mapper/\$mapper";\
-        sleep 5;\
-    }\
-};\
-' "$ZFSPLUGIN_FILEPATH"
+  sed -i \
+    -e '/use PVE::Storage::LunCmd::Comstar;/a use PVE::Storage::LunCmd::TrueNAS;' \
+    -e '/list_view   => 1,/a     list_extent => 1,' \
+    -e 's/Available \[comstar, istgt, iet, LIO\]/Available [comstar, truenas, istgt, iet, LIO]/g' \
+    -e '/return PVE::Storage::LunCmd::Comstar::get_base;/a     } elsif (\$scfg->{iscsiprovider} eq '\''truenas'\'') { return PVE::Storage::LunCmd::TrueNAS::get_base; }' \
+    -e '/PVE::Storage::LunCmd::Comstar::run_lun_command/ a         } elsif (\$scfg->{iscsiprovider} eq '\''truenas'\'') { \$msg = PVE::Storage::LunCmd::TrueNAS::run_lun_command(\$scfg, \$timeout, \$method, @params); }' \
+    -e '/^}/i # Part of the multipath enhancement' \
+    -e '/^}/i sub zfs_get_wwid_number { my (\$class, \$scfg, \$guid) = @_; die "could not find lun_number for guid \$guid" if !\$guid; return \$class->zfs_request(\$scfg, undef, "list_extent", \$guid); }' \
+    -e '/my \$path =/a # Multipath enhancement' \
+    -e '/my \$path =/a eval {' \
+    -e '/my \$path =/a     my \$wwid = \$class->zfs_get_wwid_number(\$scfg, \$guid);' \
+    -e '/my \$path =/a     if (\$wwid =~ /^([\-\\@\\w.]+)\$/) {' \
+    -e '/my \$path =/a         \$wwid = \$1;' \
+    -e '/my \$path =/a     } else {' \
+    -e '/my \$path =/a         die "Bad data in '\''\$wwid'\''";' \
+    -e '/my \$path =/a     }' \
+    -e '/my \$path =/a     my \$wwid_end = substr \$wwid, 16;' \
+    -e '/my \$path =/a     my \$mapper = "";' \
+    -e '/my \$path =/a     sleep 3;' \
+    -e '/my \$path =/a     run_command("iscsiadm -m session --rescan");' \
+    -e '/my \$path =/a     sleep 3;' \
+    -e '/my \$path =/a     my \$line = `/usr/sbin/multipath -ll | grep "\$wwid_end"`;' \
+    -e '/my \$path =/a     my (\$mapper_device) = split(''' '''', \$line);' \
+    -e '/my \$path =/a     \$mapper_device = "" unless \$mapper_device;' \
+    -e '/my \$path =/a     \$mapper .= \$mapper_device;' \
+    -e '/my \$path =/a     if (\$mapper ne "") {' \
+    -e '/my \$path =/a         \$path = "/dev/mapper/\$mapper";' \
+    -e '/my \$path =/a         sleep 5;' \
+    -e '/my \$path =/a     }' \
+    "$ZFSPLUGIN_FILEPATH"
 else
   echo "WARNING: $ZFSPLUGIN_FILEPATH not found, skipping ZFSPlugin.pm sed tweaks."
 fi
 
-# 7) Apply remaining patches if present
-if [ -d "$PATCH_DIR" ]; then
-  echo "Applying additional patches..."
-  [ -f "$PATCH_DIR/apidoc.patch" ] && \
-    patch --forward "$APIDOC_FILEPATH" < "$PATCH_DIR/apidoc.patch" || echo "(apidoc patch failed)"
-  [ -f "$PATCH_DIR/ZFSPlugin.pm.patch" ] && {
-    echo "Applying ZFSPlugin.pm patch..."
-    patch --forward "$ZFSPLUGIN_FILEPATH" < "$PATCH_DIR/ZFSPlugin.pm.patch" || echo "(ZFSPlugin.pm patch failed)"
-  }
-fi
-
-# 8) Verify required files
-echo "Verifying required files..."
-missing=0
-for file in \
-  "$PVEMANAGER_FILEPATH" \
-  "$APIDOC_FILEPATH" \
-  "$ZFSPLUGIN_FILEPATH" \
-  "$TRUENAS_PLUGIN_FILEPATH" \
-  "$REST_CLIENT_FILEPATH" \
-; do
-  [ ! -f "$file" ] && {
-    echo "ERROR: missing $file"  
-    missing=1
-  }
-done
-[ "$missing" -ne 0 ] && { echo "Aborting."; exit 1; }
-
-echo "All required files present."
-
-# 9) Reload services
-echo "Reloading Proxmox services..."
+# 6) Reload services
 systemctl reload-or-restart pvedaemon.service    || true
 systemctl reload-or-restart pveproxy.service     || true
 systemctl reload-or-restart pvestatd.service     || true
