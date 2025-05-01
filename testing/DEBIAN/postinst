@@ -41,6 +41,7 @@ for orig in \
 done
 
 # 6) Apply GUI tweaks via sed
+# 6.1 Apply pvemanagerlib.js tweaks via sed
 if [ -f "$PVEMANAGER_FILEPATH" ]; then
   echo "Applying TrueNAS GUI sed tweaks to pvemanagerlib.js..."
   # 6.1 Insert TrueNAS option after Comstar
@@ -57,6 +58,29 @@ if [ -f "$PVEMANAGER_FILEPATH" ]; then
   sed -i "s/vm\.set('hasWriteCacheOption'.*/        vm.set('hasWriteCacheOption', newVal === 'comstar' || newVal === 'truenas' || newVal === 'istgt');/" "$PVEMANAGER_FILEPATH"
 else
   echo "WARNING: $PVEMANAGER_FILEPATH not found, skipping GUI sed tweaks."
+fi
+
+# 6.5 Apply apidoc.js tweaks via sed
+if [ -f "$APIDOC_FILEPATH" ]; then
+  echo "Applying TrueNAS GUI sed tweaks to apidoc.js..."
+  # 6.5.1 Insert 'target' before transport entries
+  sed -i "/\"transport\" *:/i \\
+                        \"target\" : {\\
+                           \"description\" : \"iSCSI target.\",\\
+                           \"optional\" : 1,\\
+                           \"type\" : \"string\",\\
+                           \"typetext\" : \"<string>\"\\
+                        }," "$APIDOC_FILEPATH"
+  # 6.5.2 Insert 'target' after fuse blocks
+  sed -i "/\"fuse\" *: *{/a \\
+                        \"target\" : {\\
+                           \"description\" : \"iSCSI target.\",\\
+                           \"optional\" : 1,\\
+                           \"type\" : \"string\",\\
+                           \"typetext\" : \"<string>\"\\
+                        }," "$APIDOC_FILEPATH"
+else
+  echo "WARNING: $APIDOC_FILEPATH not found, skipping apidoc.js sed tweaks."
 fi
 
 # 7) Apply remaining patches if present
