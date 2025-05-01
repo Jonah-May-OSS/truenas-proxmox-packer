@@ -1,17 +1,17 @@
+Package: truenas-proxmox
 Source: truenas-proxmox
-Section: perl
+Section: admin
 Priority: optional
 Maintainer: Jonah May OSS <jonah@mayfamily.me>
-Uploaders: Jonah May <jonah@mayfamily.me>
-Depends: librest-client-perl, git
-Standards-Version: 4.5.0
+Standards-Version: 4.6.2
 Vcs-Git: https://github.com/Jonah-May-OSS/truenas-proxmox.git
 Vcs-Browser: https://github.com/Jonah-May-OSS/truenas-proxmox.git
 Homepage: https://github.com/Jonah-May-OSS/truenas-proxmox/wiki
-Package: truenas-proxmox
+Version: FIX_ME
 Architecture: all
-Version: 3.0.0-alpha1
-Pre-Depends: librest-client-perl, git
+Build-Depends: debhelper-compat (= 13), dh-perl, libwww-perl, libjson-maybexs-perl
 Provides: truenas-proxmox
 Description: TrueNAS Plugin for Proxmox VE
  A Proxmox VE storage plugin to interface with TrueNAS APIs.
+ Supports creating, managing, and attaching ZFS datasets and iSCSI targets
+ from a remote TrueNAS server through Proxmox Storage Management.
