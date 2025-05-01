@@ -27,20 +27,21 @@ jobs:
           BRANCH="${REF#refs/heads/}"
           echo "GitHub branch is: $BRANCH"
 
-          if [[ "$BRANCH" == feature_* ]] || [[ "$BRANCH" == ng ]]; then
-            FOLDER="development"
-            VERSION="3.0.0-alpha1"
-            REPO_NAME="truenas-proxmox-snapshots"
-          elif [[ "$BRANCH" == master ]]; then
-            FOLDER="testing"
-            VERSION="3.0.0-beta6"
-            REPO_NAME="truenas-proxmox-testing"
-          elif [[ "$BRANCH" =~ ^(v?3\.0|3\.0.*)$ ]]; then
+          # Determine if it's a release or merge
+          if [[ "$REF" =~ ^refs/tags/Release ]]; then
             FOLDER="stable"
-            VERSION="3.0.0"
+            VERSION="${REF#refs/tags/Release }"
             REPO_NAME="truenas-proxmox"
+          elif [[ "$REF" =~ ^refs/tags/Beta ]]; then
+            FOLDER="testing"
+            VERSION="${REF#refs/tags/Beta }"
+            REPO_NAME="truenas-proxmox-testing"
+          elif [[ "$BRANCH" == "main" ]]; then
+            FOLDER="development"
+            VERSION=$(date +'%Y%m%d%H%M%S')
+            REPO_NAME="truenas-proxmox-development"
           else
-            echo "ERROR: Unknown branch '$BRANCH'" >&2
+            echo "ERROR: Unknown branch or tag '$BRANCH'" >&2
             exit 1
           fi
           # Use environment file instead of deprecated set-output
