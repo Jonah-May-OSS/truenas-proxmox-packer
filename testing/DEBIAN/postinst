@@ -12,7 +12,7 @@ MAJOR_VER=${PVE_VERSION%%.*}
 # 2) Determine library path
 case "$MAJOR_VER" in
   7) LIB_PATH="/usr/share/pve-7" ;;
-  *) LIB_PATH="/usr/share"    ;;
+  *) LIB_PATH="/usr/share" ;;
 esac
 
 # 3) Define file paths
@@ -66,24 +66,24 @@ fi
 ## 5.2 apidoc.js
 if [ -f "$APIDOC_FILEPATH" ]; then
   echo "Applying TrueNAS API doc sed tweaks to apidoc.js..."
-    sed -i \
+  sed -i \
     "/\"transport\" *:/i \
                         \"target\" : {\\
                             \"description\" : \"iSCSI target.\",\\
                             \"optional\" : 1,\\
                             \"type\" : \"string\",\\
                             \"typetext\" : \"<string>\"\\
-                        },” \
+                        }," \
     "$APIDOC_FILEPATH"
 
-    sed -i \
+  sed -i \
     "/\"fuse\" *: *{/a \
                         \"target\" : {\\
                             \"description\" : \"iSCSI target.\",\\
                             \"optional\" : 1,\\
                             \"type\" : \"string\",\\
                             \"typetext\" : \"<string>\"\\
-                        }\"\, \
+                        }," \
     "$APIDOC_FILEPATH"
 
 else
