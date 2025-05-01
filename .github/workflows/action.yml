@@ -25,16 +25,19 @@ jobs:
         run: |
           REF="${{ github.event.client_payload.ref }}"
           BRANCH="${REF#refs/heads/}"
+          TAG="${REF#refs/tags/}"
+          echo "GitHub ref is: $REF"
           echo "GitHub branch is: $BRANCH"
+          echo "GitHub tag is: $TAG"
 
-          # Determine if it's a release or merge
+          # Determine if it's a release or beta tag
           if [[ "$REF" =~ ^refs/tags/Release ]]; then
             FOLDER="stable"
-            VERSION="${REF#refs/tags/Release }"
+            VERSION="${TAG#Release }"
             REPO_NAME="truenas-proxmox"
           elif [[ "$REF" =~ ^refs/tags/Beta ]]; then
             FOLDER="testing"
-            VERSION="${REF#refs/tags/Beta }"
+            VERSION="${TAG#Beta }"
             REPO_NAME="truenas-proxmox-testing"
           elif [[ "$BRANCH" == "main" ]]; then
             FOLDER="development"
@@ -44,6 +47,7 @@ jobs:
             echo "ERROR: Unknown branch or tag '$BRANCH'" >&2
             exit 1
           fi
+
           # Use environment file instead of deprecated set-output
           echo "buildFolder=$FOLDER" >> "$GITHUB_OUTPUT"
           echo "debVersion=$VERSION" >> "$GITHUB_OUTPUT"
