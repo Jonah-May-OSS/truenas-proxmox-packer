@@ -56,8 +56,8 @@ jobs:
               echo "ERROR: Unknown tag format '$TAG'" >&2
               exit 1
             fi
-          # Handle if it's a merge to main
-          elif [[ "$BRANCH" == "main" ]]; then
+          # Handle if it's a merge to master
+          elif [[ "$BRANCH" == "master" ]]; then
             FOLDER="development"
             VERSION=$(date +'%Y%m%d%H%M%S')
             REPO_NAME="truenas-proxmox-snapshots"
