@@ -1,0 +1,40 @@
+#!/bin/bash
+set -euo pipefail
+
+# TrueNAS-Proxmox pre-removal script (DEBIAN/prerm)
+# Handles both normal upgrade and failed-upgrade cases
+
+ACTION="${1:-}"  # e.g. upgrade, failed-upgrade, remove, deconfigure
+
+echo "Initiating 'prerm' for TrueNAS-Proxmox package with argument '$ACTION'..."
+
+case "$ACTION" in
+  upgrade|failed-upgrade|abort-upgrade|abort-remove|abort-deconfigure)
+    echo "Preparing system for removal or upgrade of truenas-proxmox package..."
+    # Restore any original files if present
+    if [ -f /usr/share/perl5/PVE/Storage/ZFSPlugin.pm.orig ]; then
+      mv -f /usr/share/perl5/PVE/Storage/ZFSPlugin.pm.orig /usr/share/perl5/PVE/Storage/ZFSPlugin.pm
+    fi
+    if [ -f /usr/share/pve-manager/js/pvemanagerlib.js.orig ]; then
+      mv -f /usr/share/pve-manager/js/pvemanagerlib.js.orig /usr/share/pve-manager/js/pvemanagerlib.js
+    fi
+    if [ -f /usr/share/pve-docs/api-viewer/apidoc.js.orig ]; then
+      mv -f /usr/share/pve-docs/api-viewer/apidoc.js.orig /usr/share/pve-docs/api-viewer/apidoc.js
+    fi
+    # Attempt to restart services for a clean state
+    systemctl reload-or-restart pvescheduler.service  || true
+    systemctl reload-or-restart pvedaemon.service    || true
+    systemctl reload-or-restart pvestatd.service     || true
+    systemctl reload-or-restart pveproxy.service     || true
+    ;;
+
+  remove|deconfigure)
+    echo "Prerm: standard removal/deconfigure, no additional actions."
+    ;;
+
+  *)
+    echo "No action needed for prerm '$ACTION'."
+    ;;
+esac
+
+exit 0
