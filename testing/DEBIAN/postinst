@@ -23,15 +23,21 @@ TRUENAS_PLUGIN_FILEPATH="$LIB_PATH/perl5/PVE/Storage/LunCmd/TrueNAS.pm"
 echo "Running TrueNAS-Proxmox post-install..."
 
 # 4) Backup originals
-[ "$_DEBUG" = "on" ] && echo "Backing up originals..."
-for orig in \
-  "$PVEMANAGER_FILEPATH" \
-  "$ZFSPLUGIN_FILEPATH"; do
-  [ -f "$orig" ] && [ ! -f "${orig}.orig" ] && {
-    echo " - cp $orig → ${orig}.orig"
-    cp -a "$orig" "${orig}.orig"
-  }
-done
+STAMP="$(date +%F-%H%M%S)"
+PVEV="${PVE_VERSION:-unknown}"
+BACKUP_DIR="/var/lib/truenas-proxmox/backups/${PVEV}-${STAMP}"
+mkdir -p "$BACKUP_DIR"
+
+backup() {
+  local src="$1"
+  [ -f "$src" ] || return 0
+  local name; name="$(basename "$src")"
+  cp -a "$src" "$BACKUP_DIR/$name"
+  echo " - backed up $src -> $BACKUP_DIR/$name"
+}
+
+backup "$PVEMANAGER_FILEPATH"
+backup "$ZFSPLUGIN_FILEPATH"
 
 # 5) Apply GUI tweaks via sed
 
@@ -61,74 +67,62 @@ else
   echo "WARNING: $PVEMANAGER_FILEPATH not found, skipping GUI sed tweaks."
 fi
 
-## 5.2 ZFSPlugin.pm
+## 5.2 ZFSPlugin.pm (works on PVE 8.x and 9.x)
 if [ -f "$ZFSPLUGIN_FILEPATH" ]; then
-  echo "Applying TrueNAS sed tweaks to ZFSPlugin.pm..."
-  sed -i \
-    -e "/use PVE::Storage::LunCmd::Comstar;/a \
-use PVE::Storage::LunCmd::TrueNAS;" \
-    -e "/list_view   => 1,/a \\
-    list_extent => 1," \
-    -e "s/Available \[comstar, istgt, iet, LIO\]/Available [comstar, truenas, istgt, iet, LIO]/g" \
-    -e "/return PVE::Storage::LunCmd::Comstar::get_base;/a \\
-    } elsif (\$scfg\->{iscsiprovider} eq 'truenas') { \\
-        return PVE::Storage::LunCmd::TrueNAS::get_base;" \
-    -e "/PVE::Storage::LunCmd::Comstar::run_lun_command/a \\
-        } elsif (\$scfg\->{iscsiprovider} eq 'truenas') { \\
-            \$msg = PVE::Storage::LunCmd::TrueNAS::run_lun_command(\$scfg, \$timeout, \$method, \@params);" \
-    -e "/my \$path =/a \\
-    # Multipath enhancement" \
-    -e "/my \$path =/a \\
-    eval {" \
-    -e "/my \$path =/a \\
-      my \$wwid = \$class->zfs_get_wwid_number(\$scfg, \$guid);" \
-    -e "/my \$path =/a \\
-      if (\$wwid =~ /^([-\\\@\\\\w.]+)\$/) {" \
-    -e "/my \$path =/a \\
-        \$wwid = \$1;" \
-    -e "/my \$path =/a \\
-      } else {" \
-    -e "/my \$path =/a \\
-        die \"Bad data in '\$wwid'\";" \
-    -e "/my \$path =/a \\
-      }" \
-    -e "/my \$path =/a \\
-      my \$wwid_end = substr \$wwid, 16;" \
-    -e "/my \$path =/a \\
-      my \$mapper = \"\";" \
-    -e "/my \$path =/a \\
-      sleep 3;" \
-    -e "/my \$path =/a \\
-      run_command(\"iscsiadm -m session --rescan\");" \
-    -e "/my \$path =/a \\
-      sleep 3;" \
-    -e "/my \$path =/a \\
-      my \$line = \`/usr/sbin/multipath -ll | grep \"\$\$wwid_end\"\`;" \
-    -e "/my \$path =/a \\
-      my (\$mapper_device) = split(' ' , \$line);" \
-    -e "/my \$path =/a \\
-      \$mapper_device = \"\" unless \$mapper_device;" \
-    -e "/my \$path =/a \\
-      \$mapper .= \$mapper_device;" \
-    -e "/my \$path =/a \\
-      if (\$mapper ne \"\") {" \
-    -e "/my \$path =/a \\
-        \$path = \"/dev/mapper/\$mapper\";" \
-    -e "/my \$path =/a \\
-        sleep 5;" \
-    -e "/my \$path =/a \\
-      }" \
-    -e "/my \$path =/a \\
-    };" \
-    -e "/^1;$/i \\
-sub zfs_get_wwid_number { \\
-  my (\$class, \$scfg, \$guid) = \@_; \\
-  die \"could not find lun_number for guid \$guid\" unless \$guid; \\
-  return \$class->zfs_request(\$scfg, undef, \"list_extent\", \$guid); \\
-}" \
-    "$ZFSPLUGIN_FILEPATH"
+  echo "Applying TrueNAS patch to ZFSPlugin.pm…"
+
+  # backup
+  cp -a "$ZFSPLUGIN_FILEPATH" "${ZFSPLUGIN_FILEPATH}.bak.$(date +%F-%H%M%S)"
+
+  # 1) import TrueNAS provider (idempotent)
+  perl -0777 -i -pe 's/(use PVE::Storage::LunCmd::Comstar;)/$1\nuse PVE::Storage::LunCmd::TrueNAS;/ unless /LunCmd::TrueNAS;/' "$ZFSPLUGIN_FILEPATH"
+
+  # 2) add list_extent capability (idempotent)
+  perl -0777 -i -pe 's/(list_view\s*=>\s*1,)/$1\n    list_extent => 1,/ unless /list_extent\s*=>\s*1/' "$ZFSPLUGIN_FILEPATH"
+
+  # 3) add TrueNAS branch to zfs_get_base dispatcher
+  #    Captures optional ($scfg) so it works on 8.x (no arg) and 9.x (with $scfg)
+  perl -0777 -i -pe \
+  "s|(return\\s+PVE::Storage::LunCmd::Comstar::get_base)(\\(\\\$scfg\\))?;|\\\$&\n    } elsif (\\\$scfg->{iscsiprovider} eq 'truenas') {\n        return PVE::Storage::LunCmd::TrueNAS::get_base\\\$2;|s unless /TrueNAS::get_base/" \
+  "$ZFSPLUGIN_FILEPATH"
+
+  # 4) add TrueNAS branch to run_lun_command dispatcher
+  perl -0777 -i -pe \
+  "s|(\\\$msg\\s*=\\s*PVE::Storage::LunCmd::Comstar::run_lun_command\\(\\\$scfg,\\s*\\\$timeout,\\s*\\\$method,\\s*\\\@params\\);\\s*)|\\\$1        } elsif (\\\$scfg->{iscsiprovider} eq 'truenas') {\n            \\\$msg = PVE::Storage::LunCmd::TrueNAS::run_lun_command(\\\$scfg, \\\$timeout, \\\$method, \\\@params);\n|s unless /TrueNAS::run_lun_command/" \
+  "$ZFSPLUGIN_FILEPATH"
+
+  # 5) include 'truenas' in the error text (cosmetic)
+  perl -0777 -i -pe "s/Available \\[comstar, *istgt, *iet, *LIO\\]/Available [comstar, truenas, istgt, iet, LIO]/g" "$ZFSPLUGIN_FILEPATH"
+
+  # 6) syntax check; stop on error
+  perl -c "$ZFSPLUGIN_FILEPATH" || { echo "ERROR: ZFSPlugin.pm syntax error"; exit 1; }
 else
-  echo "WARNING: $ZFSPLUGIN_FILEPATH not found, skipping ZFSPlugin.pm sed tweaks."
+  echo "WARNING: $ZFSPLUGIN_FILEPATH not found, skipping ZFSPlugin.pm tweaks."
+fi
+
+## 5.3 ZFSPlugin.pm — WWID/Multipath enhancement (PVE 8 safe, harmless on PVE 9 libiscsi)
+if [ -f "$ZFSPLUGIN_FILEPATH" ]; then
+  echo "Applying WWID/Multipath enhancement to ZFSPlugin.pm…"
+
+  # backup
+  cp -a "$ZFSPLUGIN_FILEPATH" "${ZFSPLUGIN_FILEPATH}.bak.$(date +%F-%H%M%S)"
+
+  # (A) add helper only if missing
+  perl -0777 -i -pe '
+    unless (/sub\s+zfs_get_wwid_number\s*\(/) {
+      s|^1;\s*$|sub zfs_get_wwid_number {\n  my ($class,$scfg,$guid) = @_;\n  die \"could not find lun_number for guid $guid\" unless $guid;\n  return $class->zfs_request($scfg, undef, \"list_extent\", $guid);\n}\n\n1;\n|m;
+    }' "$ZFSPLUGIN_FILEPATH"
+
+  # (B) inject multipath resolver after the first "my $path = ..." — but only once
+  perl -0777 -i -pe '
+    unless (/Multipath enhancement\b/) {
+      s|(my\s+\$path\s*=\s*[^;]+;)|$1\n    # Multipath enhancement (optional; only meaningful when using kernel block devices)\n    eval {\n      my $wwid = $class->zfs_get_wwid_number($scfg, $guid);\n      if ($wwid =~ /^([\\-\\@\\w\\.]+)$/) { $wwid = $1 } else { die \"Bad data in \\x27$wwid\\x27\" }\n      my $wwid_end = substr $wwid, 16; # match tail in multipath -ll output\n      my $line = `/usr/sbin/multipath -ll | grep \"$wwid_end\"`;\n      my ($mapper_device) = split(/\\s+/, $line);\n      if ($mapper_device && -b \"/dev/mapper/$mapper_device\") {\n        $path = \"/dev/mapper/$mapper_device\";\n      }\n    };\n|s;
+    }' "$ZFSPLUGIN_FILEPATH"
+
+  # syntax check
+  perl -c "$ZFSPLUGIN_FILEPATH" || { echo "ERROR: ZFSPlugin.pm syntax error"; exit 1; }
+else
+  echo "WARNING: $ZFSPLUGIN_FILEPATH not found, skipping WWID/Multipath."
 fi
 
 # 6) Reload services
