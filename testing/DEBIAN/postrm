@@ -2,42 +2,89 @@
 # TrueNAS-Proxmox post-removal script (DEBIAN/postrm)
 # Handles package remove, purge, and upgrade cleanup
 
-set -eu
+set -euo pipefail
 
-# Debug toggle
 _DEBUG=${_DEBUG:-on}
 
-# Base installation paths
-LIB_PATH="/usr/share"
+# Detect Proxmox version (for selecting the most relevant backup set)
+if PVE_VERSION=$(dpkg-query --showformat='${Version}' --show pve-manager 2>/dev/null); then :; else PVE_VERSION="unknown"; fi
+MAJOR_VER=${PVE_VERSION%%.*}
+[ "$_DEBUG" = "on" ] && echo "Proxmox Version: $PVE_VERSION (Major: $MAJOR_VER)"
+
+# Library path differs on old PVE7-only installs; otherwise /usr/share
+case "$MAJOR_VER" in
+  7) LIB_PATH="/usr/share/pve-7" ;;
+  *) LIB_PATH="/usr/share" ;;
+esac
+
 TRUENAS_PLUGIN_FILEPATH="${LIB_PATH}/perl5/PVE/Storage/LunCmd/TrueNAS.pm"
 ZFSPLUGIN_FILEPATH="${LIB_PATH}/perl5/PVE/Storage/ZFSPlugin.pm"
 PVEMANAGER_FILEPATH="${LIB_PATH}/pve-manager/js/pvemanagerlib.js"
 APIDOC_FILEPATH="${LIB_PATH}/pve-docs/api-viewer/apidoc.js"
 
-# Restore a .orig backup if present
-restore_backup() {
-    target="$1"
-    orig="${target}.orig"
-    if [ -f "$orig" ]; then
-        echo "Restoring original: $target from $orig"
-        mv -f "$orig" "$target"
+# Our new backup root
+BACKUP_ROOT="/var/lib/truenas-proxmox/backups"
+
+# Find the most recent backup dir (prefer matching current PVE_VERSION prefix; else any)
+latest_backup_dir() {
+  [ -d "$BACKUP_ROOT" ] || return 1
+
+  # 1) prefer backups whose dir starts with current PVE version (e.g., "9.0-" or "9.")
+  # 2) fall back to any backup dir by mtime
+  # shellcheck disable=SC2012
+  match="$(ls -1dt "${BACKUP_ROOT}/${PVE_VERSION}-"* 2>/dev/null | head -n1 || true)"
+  if [ -n "${match:-}" ]; then
+    echo "$match"
+    return 0
+  fi
+
+  any="$(ls -1dt "${BACKUP_ROOT}/"* 2>/dev/null | head -n1 || true)"
+  [ -n "${any:-}" ] && { echo "$any"; return 0; }
+
+  return 1
+}
+
+restore_from_backup_dir() {
+  srcdir="$1"
+  shift
+  for target in "$@"; do
+    [ -n "$target" ] || continue
+    base="$(basename "$target")"
+    src="$srcdir/$base"
+    if [ -f "$src" ]; then
+      echo "Restoring $target from $src"
+      cp -a "$src" "$target"
+    else
+      [ "$_DEBUG" = "on" ] && echo " - no backup for $(basename "$target") in $srcdir (skipping)"
     fi
+  done
 }
 
 echo "Running postrm with action '${1:-}'..."
 
 case "${1:-}" in
   remove)
-    echo "-- remove: cleaning plugin files and restoring originals"
+    echo "-- remove: cleaning plugin files and restoring from latest versioned backup"
+    # Remove our provider module (safe if already gone)
     rm -f "$TRUENAS_PLUGIN_FILEPATH" || true
-    restore_backup "$ZFSPLUGIN_FILEPATH"
-    restore_backup "$PVEMANAGER_FILEPATH"
-    restore_backup "$APIDOC_FILEPATH"
+
+    if bdir="$(latest_backup_dir)"; then
+      echo "Using backup dir: $bdir"
+      restore_from_backup_dir "$bdir" \
+        "$ZFSPLUGIN_FILEPATH" \
+        "$PVEMANAGER_FILEPATH" \
+        "$APIDOC_FILEPATH"
+    else
+      echo "No versioned backups found under $BACKUP_ROOT; leaving files as-is."
+    fi
     ;;
 
   purge)
-    echo "-- purge: removing leftover .orig backups"
-    find "$LIB_PATH" -type f -name '*.orig' -delete || true
+    echo "-- purge: removing leftover versioned backups"
+    if [ -d "$BACKUP_ROOT" ]; then
+      rm -rf "$BACKUP_ROOT"
+      echo "Deleted $BACKUP_ROOT"
+    fi
     ;;
 
   upgrade|abort-upgrade)
