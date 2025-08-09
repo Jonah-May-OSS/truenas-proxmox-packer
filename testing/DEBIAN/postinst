@@ -28,10 +28,10 @@ backup "$PVEMANAGER_FILEPATH"
 backup "$ZFSPLUGIN_FILEPATH"
 
 # --- 3) Provider module present? ---
-#if [ ! -f "$TRUENAS_PLUGIN_FILEPATH" ]; then
-#  echo "ERROR: $TRUENAS_PLUGIN_FILEPATH not found"; exit 1
-#fi
-#perl -c "$TRUENAS_PLUGIN_FILEPATH"
+if [ ! -f "$TRUENAS_PLUGIN_FILEPATH" ]; then
+  echo "ERROR: $TRUENAS_PLUGIN_FILEPATH not found"; exit 1
+fi
+perl -c "$TRUENAS_PLUGIN_FILEPATH"
 
 # --- 4) GUI tweaks (idempotent) ---
 if [ -f "$PVEMANAGER_FILEPATH" ]; then
