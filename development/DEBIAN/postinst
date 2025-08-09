@@ -1,141 +1,113 @@
 #!/bin/sh
-# TrueNAS-Proxmox post-install script
+# TrueNAS-Proxmox post-install script (PVE 8 & 9) — grep+sed only
 set -eu
 
 _DEBUG=${_DEBUG:-on}
 
-# 1) Detect Proxmox version
+# --- 1) Detect PVE version & lib path ---
 if PVE_VERSION=$(dpkg-query --showformat='${Version}' --show pve-manager 2>/dev/null); then :; else PVE_VERSION="unknown"; fi
 MAJOR_VER=${PVE_VERSION%%.*}
-[ "$_DEBUG" = "on" ] && echo "Proxmox Version: $PVE_VERSION (Major: $MAJOR_VER)"
-
-# 2) Determine library path
 case "$MAJOR_VER" in
   7) LIB_PATH="/usr/share/pve-7" ;;
   *) LIB_PATH="/usr/share" ;;
 esac
 
-# 3) Define file paths
 PVEMANAGER_FILEPATH="$LIB_PATH/pve-manager/js/pvemanagerlib.js"
 ZFSPLUGIN_FILEPATH="$LIB_PATH/perl5/PVE/Storage/ZFSPlugin.pm"
 TRUENAS_PLUGIN_FILEPATH="$LIB_PATH/perl5/PVE/Storage/LunCmd/TrueNAS.pm"
 
-echo "Running TrueNAS-Proxmox post-install..."
+[ "$_DEBUG" = "on" ] && echo "Proxmox Version: $PVE_VERSION  (Major: $MAJOR_VER)"
+echo "Running TrueNAS-Proxmox post-install…"
 
-# 4) Backup originals
-[ "$_DEBUG" = "on" ] && echo "Backing up originals..."
-for orig in \
-  "$PVEMANAGER_FILEPATH" \
-  "$ZFSPLUGIN_FILEPATH"; do
-  [ -f "$orig" ] && [ ! -f "${orig}.orig" ] && {
-    echo " - cp $orig → ${orig}.orig"
-    cp -a "$orig" "${orig}.orig"
-  }
-done
+# --- 2) Backups (versioned, never reused) ---
+STAMP="$(date +%F-%H%M%S)"
+BACKUP_DIR="/var/lib/truenas-proxmox/backups/${PVE_VERSION}-${STAMP}"
+mkdir -p "$BACKUP_DIR"
+backup() { [ -f "$1" ] && cp -a "$1" "$BACKUP_DIR/$(basename "$1")" && echo " - backed up $1 -> $BACKUP_DIR/$(basename "$1")"; }
+backup "$PVEMANAGER_FILEPATH"
+backup "$ZFSPLUGIN_FILEPATH"
 
-# 5) Apply GUI tweaks via sed
+# --- 3) Provider module present? ---
+if [ ! -f "$TRUENAS_PLUGIN_FILEPATH" ]; then
+  echo "ERROR: $TRUENAS_PLUGIN_FILEPATH not found"; exit 1
+fi
+perl -c "$TRUENAS_PLUGIN_FILEPATH"
 
-## 5.1 pvemanagerlib.js
+# --- 4) GUI tweaks (idempotent) ---
 if [ -f "$PVEMANAGER_FILEPATH" ]; then
-  echo "Applying TrueNAS GUI sed tweaks to pvemanagerlib.js..."
-  sed -i \
-    -e "/\['comstar', 'Comstar'\]/a \\
-        ['truenas', 'TrueNAS']," \
-    "$PVEMANAGER_FILEPATH"
+  echo "Applying TrueNAS GUI tweaks…"
 
-  sed -i \
-    -e "/isComstar: *true,/a \\
-            isTrueNAS: false,\\
-            isLIO: false," \
-    "$PVEMANAGER_FILEPATH"
+  grep -q "['truenas', 'TrueNAS']" "$PVEMANAGER_FILEPATH" || \
+    sed -i "/\['comstar', 'Comstar'\]/a \        ['truenas', 'TrueNAS']," "$PVEMANAGER_FILEPATH"
 
-  sed -i \
-    -e "/vm.set('isComstar',/a \\
-            vm.set('isTrueNAS', newVal === 'truenas');" \
-    "$PVEMANAGER_FILEPATH"
+  grep -q "isTrueNAS:" "$PVEMANAGER_FILEPATH" || \
+    sed -i "/isComstar: *true,/a \            isTrueNAS: false,\n            isLIO: false," "$PVEMANAGER_FILEPATH"
 
-  sed -i \
-    -e "s/vm\\.set('hasWriteCacheOption'.*/vm.set('hasWriteCacheOption', newVal === 'comstar' || newVal === 'truenas' || newVal === 'istgt');/" \
-    "$PVEMANAGER_FILEPATH"
+  grep -q "vm.set('isTrueNAS'" "$PVEMANAGER_FILEPATH" || \
+    sed -i "/vm.set('isComstar',/a \            vm.set('isTrueNAS', newVal === 'truenas');" "$PVEMANAGER_FILEPATH"
+
+  sed -i "s/vm\.set('hasWriteCacheOption'.*/vm.set('hasWriteCacheOption', newVal === 'comstar' || newVal === 'truenas' || newVal === 'istgt');/" "$PVEMANAGER_FILEPATH"
 else
-  echo "WARNING: $PVEMANAGER_FILEPATH not found, skipping GUI sed tweaks."
+  echo "WARNING: $PVEMANAGER_FILEPATH not found, skipping GUI tweaks."
 fi
 
-## 5.2 ZFSPlugin.pm
+# --- 5) ZFSPlugin.pm prep (imports, list_extent, cosmetic) ---
 if [ -f "$ZFSPLUGIN_FILEPATH" ]; then
-  echo "Applying TrueNAS sed tweaks to ZFSPlugin.pm..."
-  sed -i \
-    -e "/use PVE::Storage::LunCmd::Comstar;/a \
-use PVE::Storage::LunCmd::TrueNAS;" \
-    -e "/list_view   => 1,/a \\
-    list_extent => 1," \
-    -e "s/Available \[comstar, istgt, iet, LIO\]/Available [comstar, truenas, istgt, iet, LIO]/g" \
-    -e "/return PVE::Storage::LunCmd::Comstar::get_base;/a \\
-    } elsif (\$scfg\->{iscsiprovider} eq 'truenas') { \\
-        return PVE::Storage::LunCmd::TrueNAS::get_base;" \
-    -e "/PVE::Storage::LunCmd::Comstar::run_lun_command/a \\
-        } elsif (\$scfg\->{iscsiprovider} eq 'truenas') { \\
-            \$msg = PVE::Storage::LunCmd::TrueNAS::run_lun_command(\$scfg, \$timeout, \$method, \@params);" \
-    -e "/my \$path =/a \\
-    # Multipath enhancement" \
-    -e "/my \$path =/a \\
-    eval {" \
-    -e "/my \$path =/a \\
-      my \$wwid = \$class->zfs_get_wwid_number(\$scfg, \$guid);" \
-    -e "/my \$path =/a \\
-      if (\$wwid =~ /^([-\\\@\\\\w.]+)\$/) {" \
-    -e "/my \$path =/a \\
-        \$wwid = \$1;" \
-    -e "/my \$path =/a \\
-      } else {" \
-    -e "/my \$path =/a \\
-        die \"Bad data in '\$wwid'\";" \
-    -e "/my \$path =/a \\
-      }" \
-    -e "/my \$path =/a \\
-      my \$wwid_end = substr \$wwid, 16;" \
-    -e "/my \$path =/a \\
-      my \$mapper = \"\";" \
-    -e "/my \$path =/a \\
-      sleep 3;" \
-    -e "/my \$path =/a \\
-      run_command(\"iscsiadm -m session --rescan\");" \
-    -e "/my \$path =/a \\
-      sleep 3;" \
-    -e "/my \$path =/a \\
-      my \$line = \`/usr/sbin/multipath -ll | grep \"\$\$wwid_end\"\`;" \
-    -e "/my \$path =/a \\
-      my (\$mapper_device) = split(' ' , \$line);" \
-    -e "/my \$path =/a \\
-      \$mapper_device = \"\" unless \$mapper_device;" \
-    -e "/my \$path =/a \\
-      \$mapper .= \$mapper_device;" \
-    -e "/my \$path =/a \\
-      if (\$mapper ne \"\") {" \
-    -e "/my \$path =/a \\
-        \$path = \"/dev/mapper/\$mapper\";" \
-    -e "/my \$path =/a \\
-        sleep 5;" \
-    -e "/my \$path =/a \\
-      }" \
-    -e "/my \$path =/a \\
-    };" \
-    -e "/^1;$/i \\
-sub zfs_get_wwid_number { \\
-  my (\$class, \$scfg, \$guid) = \@_; \\
-  die \"could not find lun_number for guid \$guid\" unless \$guid; \\
-  return \$class->zfs_request(\$scfg, undef, \"list_extent\", \$guid); \\
-}" \
-    "$ZFSPLUGIN_FILEPATH"
+  echo "Preparing ZFSPlugin.pm…"
+
+  # Import TrueNAS provider once
+  grep -q "LunCmd::TrueNAS;" "$ZFSPLUGIN_FILEPATH" || \
+    sed -i "/use PVE::Storage::LunCmd::LIO;/a use PVE::Storage::LunCmd::TrueNAS;" "$ZFSPLUGIN_FILEPATH"
+
+  # Add list_extent capability once (tolerant spacing)
+  sed -E -i "/list_view[[:space:]]*=>[[:space:]]*1,/{
+a\ \ \ \ list_extent => 1,
+}" "$ZFSPLUGIN_FILEPATH"
+
+  # Cosmetic: include truenas in “Available […]”
+  sed -E -i "s/Available[[:space:]]*\[[^]]*\]/Available [comstar, truenas, istgt, iet, LIO]/" "$ZFSPLUGIN_FILEPATH"
 else
-  echo "WARNING: $ZFSPLUGIN_FILEPATH not found, skipping ZFSPlugin.pm sed tweaks."
+  echo "WARNING: $ZFSPLUGIN_FILEPATH not found, aborting."; exit 1
 fi
 
-# 6) Reload services
-systemctl reload-or-restart pvedaemon.service    || true
-systemctl reload-or-restart pveproxy.service     || true
-systemctl reload-or-restart pvestatd.service     || true
-systemctl reload-or-restart pvescheduler.service || true
+# --- 6) Insert TrueNAS branches INSIDE dispatchers (grep + sed) ---
+
+# 6a) get_base: insert before the unknown-provider guard in the get_base closure
+if ! grep -q "TrueNAS::get_base" "$ZFSPLUGIN_FILEPATH"; then
+  # replace the first '} else {' in the get_base closure
+  sed -i -E '/^my \$zfs_get_base = sub/,/^\s*};/{
+    0,/^[[:space:]]*}\s*else\s*\{/{s//    } elsif (\$scfg->{iscsiprovider} eq '\''truenas'\'') \{\n        return PVE::Storage::LunCmd::TrueNAS::get_base(\$scfg);\n    } else \{/}
+  }' "$ZFSPLUGIN_FILEPATH"
+fi
+
+# 6b) run_lun_command: insert before the unknown-provider guard in zfs_request
+if ! grep -q "TrueNAS::run_lun_command" "$ZFSPLUGIN_FILEPATH"; then
+  sed -i -E '/^sub zfs_request/,/^\s*};/{
+    0,/^[[:space:]]*}\s*else\s*\{/{s//        } elsif (\$scfg->{iscsiprovider} eq '\''truenas'\'') \{\n            \$msg = PVE::Storage::LunCmd::TrueNAS::run_lun_command(\$scfg, \$timeout, \$method, \@params);\n        } else \{/}
+  }' "$ZFSPLUGIN_FILEPATH"
+fi
+
+# --- 7) WWID / multipath helper (idempotent; no-op on libiscsi device paths) ---
+# 7a) helper sub (above '1;') only if missing
+if ! grep -q "sub zfs_get_wwid_number" "$ZFSPLUGIN_FILEPATH"; then
+  sed -i "/^1;$/i sub zfs_get_wwid_number {\n  my (\$class, \$scfg, \$guid) = \@_;\n  die \"could not find lun_number for guid \$guid\" unless \$guid;\n  return \$class->zfs_request(\$scfg, undef, \"list_extent\", \$guid);\n}\n" "$ZFSPLUGIN_FILEPATH"
+fi
+
+# 7b) multipath resolver: after first 'my $path = ...' (only once)
+if ! grep -q "Multipath enhancement" "$ZFSPLUGIN_FILEPATH"; then
+  sed -i "/my \$path =/a \    # Multipath enhancement\n    eval {\n      if (\$path =~ m{^/dev/}) {\n        my \$wwid = \$class->zfs_get_wwid_number(\$scfg, \$guid);\n        if (\$wwid =~ /^([-\@\\\\w.]+)\$/) { \$wwid = \$1 } else { die \"Bad data in '\$wwid'\" }\n        my \$wwid_end = substr \$wwid, 16;\n        my \$line = \`/usr/sbin/multipath -ll | grep \"\$\$wwid_end\"\`;\n        my (\$mapper_device) = split(' ' , \$line);\n        if (\$mapper_device && -b \"/dev/mapper/\$mapper_device\") {\n          \$path = \"/dev/mapper/\$mapper_device\";\n        }\n      }\n    };" "$ZFSPLUGIN_FILEPATH"
+fi
+
+# --- 8) Compile & verify, then restart services ---
+perl -c "$ZFSPLUGIN_FILEPATH" || { echo "ERROR: ZFSPlugin.pm syntax error"; exit 1; }
+grep -q "TrueNAS::get_base" "$ZFSPLUGIN_FILEPATH" || { echo "ERROR: get_base insert missing"; exit 1; }
+grep -q "TrueNAS::run_lun_command" "$ZFSPLUGIN_FILEPATH" || { echo "ERROR: run_lun_command insert missing"; exit 1; }
+
+systemctl restart pvedaemon pveproxy pvestatd
+
+# Final sanity: module loads
+perl -MPVE::Storage::ZFSPlugin -e1
+perl -MPVE::Storage::LunCmd::TrueNAS -e1
 
 echo "Installation complete."
 exit 0
