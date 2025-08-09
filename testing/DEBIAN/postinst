@@ -98,22 +98,61 @@ fi
 
 # 5.3 ZFSPlugin.pm — WWID / multipath helper (safe on 9.x libiscsi)
 if [ -f "$ZFSPLUGIN_FILEPATH" ]; then
-  echo "Patching ZFSPlugin.pm (WWID/multipath)…"
-
-  # (A) helper sub; all $ escaped so perl -pe doesn't interpolate
-  perl -0777 -i -pe '
-    unless (/sub\s+zfs_get_wwid_number\s*\(/) {
-      s|^1;\s*$|sub zfs_get_wwid_number {\n  my (\$class, \$scfg, \$guid) = @_;\n  die "could not find lun_number for guid \$guid" unless \$guid;\n  return \$class->zfs_request(\$scfg, undef, "list_extent", \$guid);\n}\n\n1;\n|m;
-    }' "$ZFSPLUGIN_FILEPATH"
-
-  # (B) inject multipath resolver after first "my $path = ..." (guarded for /dev/* paths)
-  perl -0777 -i -pe '
-    unless (/Multipath enhancement\b/) {
-      s|(my\s+\$path\s*=\s*[^;]+;)|$1\n    # Multipath enhancement (optional; only meaningful when using kernel block devices)\n    eval {\n      if (\$path =~ m{^/dev/}) {\n        my \$wwid = \$class->zfs_get_wwid_number(\$scfg, \$guid);\n        if (\$wwid =~ /^([\\-\\@\\w\\.]+)$/) { \$wwid = $1 } else { die "Bad data in '"'"'\$wwid'"'"'" }\n        my \$wwid_end = substr \$wwid, 16; # match tail in multipath -ll output\n        my \$line = `/usr/sbin/multipath -ll | grep "\$wwid_end"`;\n        my (\$mapper_device) = split(/\\s+/, \$line);\n        if (\$mapper_device && -b "/dev/mapper/\$mapper_device") {\n          \$path = "/dev/mapper/\$mapper_device";\n        }\n      }\n    };\n|s;
-    }' "$ZFSPLUGIN_FILEPATH"
-
-  # Compile check again
-  perl -c "$ZFSPLUGIN_FILEPATH" || { echo "ERROR: ZFSPlugin.pm syntax error after multipath patch"; exit 1; }
+  echo "Applying TrueNAS sed tweaks to ZFSPlugin.pm..."
+  sed -i \
+    -e "/my \$path =/a \\
+    # Multipath enhancement" \
+    -e "/my \$path =/a \\
+    eval {" \
+    -e "/my \$path =/a \\
+      my \$wwid = \$class->zfs_get_wwid_number(\$scfg, \$guid);" \
+    -e "/my \$path =/a \\
+      if (\$wwid =~ /^([-\\\@\\\\w.]+)\$/) {" \
+    -e "/my \$path =/a \\
+        \$wwid = \$1;" \
+    -e "/my \$path =/a \\
+      } else {" \
+    -e "/my \$path =/a \\
+        die \"Bad data in '\$wwid'\";" \
+    -e "/my \$path =/a \\
+      }" \
+    -e "/my \$path =/a \\
+      my \$wwid_end = substr \$wwid, 16;" \
+    -e "/my \$path =/a \\
+      my \$mapper = \"\";" \
+    -e "/my \$path =/a \\
+      sleep 3;" \
+    -e "/my \$path =/a \\
+      run_command(\"iscsiadm -m session --rescan\");" \
+    -e "/my \$path =/a \\
+      sleep 3;" \
+    -e "/my \$path =/a \\
+      my \$line = \`/usr/sbin/multipath -ll | grep \"\$\$wwid_end\"\`;" \
+    -e "/my \$path =/a \\
+      my (\$mapper_device) = split(' ' , \$line);" \
+    -e "/my \$path =/a \\
+      \$mapper_device = \"\" unless \$mapper_device;" \
+    -e "/my \$path =/a \\
+      \$mapper .= \$mapper_device;" \
+    -e "/my \$path =/a \\
+      if (\$mapper ne \"\") {" \
+    -e "/my \$path =/a \\
+        \$path = \"/dev/mapper/\$mapper\";" \
+    -e "/my \$path =/a \\
+        sleep 5;" \
+    -e "/my \$path =/a \\
+      }" \
+    -e "/my \$path =/a \\
+    };" \
+    -e "/^1;$/i \\
+sub zfs_get_wwid_number { \\
+  my (\$class, \$scfg, \$guid) = \@_; \\
+  die \"could not find lun_number for guid \$guid\" unless \$guid; \\
+  return \$class->zfs_request(\$scfg, undef, \"list_extent\", \$guid); \\
+}" \
+    "$ZFSPLUGIN_FILEPATH"
+else
+  echo "WARNING: $ZFSPLUGIN_FILEPATH not found, skipping ZFSPlugin.pm sed tweaks."
 fi
 
 # 6) Reload services
